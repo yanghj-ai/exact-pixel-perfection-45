@@ -56,6 +56,8 @@ export default {
         amber: "hsl(var(--amber))",
         green: "hsl(var(--green))",
         coral: "hsl(var(--coral))",
+        heal: "hsl(var(--heal-green))",
+        pokecenter: "hsl(var(--pokecenter-red))",
         sidebar: {
           DEFAULT: "hsl(var(--sidebar-background))",
           foreground: "hsl(var(--sidebar-foreground))",

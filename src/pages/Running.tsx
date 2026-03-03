@@ -12,6 +12,8 @@ import {
   type RunningSession,
   type Challenge,
 } from '@/lib/running';
+import { createEgg, addDistanceToEggs, triggerEncounter, catchPokemon } from '@/lib/collection';
+import { getPokemonById, RARITY_CONFIG } from '@/lib/pokemon-registry';
 import { getPet, getRequiredExp } from '@/lib/pet';
 import type { LevelUpResult } from '@/lib/pet';
 import PetSprite from '@/components/PetSprite';
@@ -154,6 +156,30 @@ export default function RunningPage() {
     const exp = Math.max(5, Math.round(session.distanceKm * 10));
     setFoodReward(food);
     setExpReward(exp);
+
+    // Hatch eggs with distance
+    const hatchedEggs = addDistanceToEggs(session.distanceKm);
+    if (hatchedEggs.length > 0) {
+      hatchedEggs.forEach(egg => {
+        const species = getPokemonById(egg.speciesId);
+        if (species) toast(`🥚 알에서 ${species.name}이(가) 태어났다!`);
+      });
+    }
+
+    // Grant new egg based on distance
+    let eggRarity: 'common' | 'uncommon' | 'rare' = 'common';
+    if (session.distanceKm >= 5) eggRarity = 'rare';
+    else if (session.distanceKm >= 3) eggRarity = 'uncommon';
+    const newEgg = createEgg(eggRarity);
+    if (newEgg) toast(`🥚 ${RARITY_CONFIG[eggRarity].label} 알을 획득했다!`);
+
+    // Wild encounter
+    const encounter = triggerEncounter(session.distanceKm);
+    if (encounter) {
+      catchPokemon(encounter.id);
+      toast(`⚡ 야생의 ${encounter.name}을(를) 발견하여 포획했다!`);
+    }
+
     setRunState('completed');
   };
 
