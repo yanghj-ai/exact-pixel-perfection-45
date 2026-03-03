@@ -79,7 +79,7 @@ export default function Home() {
         </div>
 
         {/* Pet area */}
-        <div className="relative flex flex-col items-center mb-6">
+        <div className="relative flex flex-col items-center mb-6 min-h-[320px] justify-center">
           {/* Floating hearts */}
           <AnimatePresence>
             {hearts.map((id, i) => (
