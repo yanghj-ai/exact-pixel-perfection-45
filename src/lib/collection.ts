@@ -302,7 +302,7 @@ export function catchPokemon(speciesId: number): OwnedPokemon {
 
 export function addCoins(amount: number) {
   const col = getCollection();
-  col.coins += amount;
+  col.coins = Math.max(0, col.coins + amount); // never go below 0
   saveCollection(col);
 }
 

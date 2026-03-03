@@ -90,20 +90,30 @@ export default function BattlePage() {
     if (currentTurnIdx >= battleResult.turns.length) {
       setTimeout(() => {
         setPhase('result');
-        // Grant rewards
-        addCoins(battleResult.rewards.coins);
-        grantRewards(
-          battleResult.rewards.bonusItems.filter(i => i.name === '먹이').reduce((s, i) => s + i.count, 0),
-          battleResult.rewards.exp
-        );
-        // Apply injuries
+        const won = battleResult.winner === 'player';
+
+        if (won) {
+          // Win: grant rewards
+          addCoins(battleResult.rewards.coins);
+          grantRewards(
+            battleResult.rewards.bonusItems.filter(i => i.name === '먹이').reduce((s, i) => s + i.count, 0),
+            battleResult.rewards.exp
+          );
+        } else {
+          // Lose: deduct coins
+          if (battleResult.rewards.coinsLost > 0) {
+            addCoins(-battleResult.rewards.coinsLost);
+          }
+        }
+
+        // Apply injuries regardless
         applyBattleDamage(battleResult.playerHpRatios);
         saveBattleRecord({
           id: `battle_${Date.now()}`,
           date: new Date().toISOString().split('T')[0],
           opponentName: selectedNpc?.name || '???',
-          result: battleResult.winner === 'player' ? 'win' : 'lose',
-          coinsEarned: battleResult.rewards.coins,
+          result: won ? 'win' : 'lose',
+          coinsEarned: won ? battleResult.rewards.coins : -battleResult.rewards.coinsLost,
           expEarned: battleResult.rewards.exp,
         });
       }, 1000);
@@ -449,22 +459,31 @@ export default function BattlePage() {
 
           {/* Rewards */}
           <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.8 }} className="glass-card p-4 mb-4">
-            <p className="text-xs text-muted-foreground mb-3">🎁 보상</p>
+            <p className="text-xs text-muted-foreground mb-3">{won ? '🎁 보상' : '💸 패널티'}</p>
             <div className="flex flex-wrap gap-3 justify-center">
-              <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }} transition={{ delay: 1, type: 'spring' }} className="flex items-center gap-2 rounded-xl bg-secondary/10 px-4 py-2">
-                <Coins size={16} className="text-secondary" />
-                <span className="font-bold text-secondary">+{rewards.coins}</span>
-              </motion.div>
-              <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }} transition={{ delay: 1.2, type: 'spring' }} className="flex items-center gap-2 rounded-xl bg-accent/10 px-4 py-2">
-                <Zap size={16} className="text-accent" />
-                <span className="font-bold text-accent">+{rewards.exp} EXP</span>
-              </motion.div>
-              {rewards.bonusItems.map((item, i) => (
-                <motion.div key={i} initial={{ scale: 0 }} animate={{ scale: 1 }} transition={{ delay: 1.4 + i * 0.2, type: 'spring' }} className="flex items-center gap-2 rounded-xl bg-primary/10 px-4 py-2">
-                  <Sparkles size={14} className="text-primary" />
-                  <span className="font-bold text-primary">{item.emoji} {item.name} x{item.count}</span>
+              {won ? (
+                <>
+                  <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }} transition={{ delay: 1, type: 'spring' }} className="flex items-center gap-2 rounded-xl bg-secondary/10 px-4 py-2">
+                    <Coins size={16} className="text-secondary" />
+                    <span className="font-bold text-secondary">+{rewards.coins}</span>
+                  </motion.div>
+                  <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }} transition={{ delay: 1.2, type: 'spring' }} className="flex items-center gap-2 rounded-xl bg-accent/10 px-4 py-2">
+                    <Zap size={16} className="text-accent" />
+                    <span className="font-bold text-accent">+{rewards.exp} EXP</span>
+                  </motion.div>
+                  {rewards.bonusItems.map((item, i) => (
+                    <motion.div key={i} initial={{ scale: 0 }} animate={{ scale: 1 }} transition={{ delay: 1.4 + i * 0.2, type: 'spring' }} className="flex items-center gap-2 rounded-xl bg-primary/10 px-4 py-2">
+                      <Sparkles size={14} className="text-primary" />
+                      <span className="font-bold text-primary">{item.emoji} {item.name} x{item.count}</span>
+                    </motion.div>
+                  ))}
+                </>
+              ) : (
+                <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }} transition={{ delay: 1, type: 'spring' }} className="flex items-center gap-2 rounded-xl bg-destructive/10 px-4 py-2">
+                  <Coins size={16} className="text-destructive" />
+                  <span className="font-bold text-destructive">-{rewards.coinsLost} 코인</span>
                 </motion.div>
-              ))}
+              )}
             </div>
           </motion.div>
 

@@ -5,7 +5,7 @@
 // ═══════════════════════════════════════════════════════════
 
 import { getPokemonById, type PokemonType, type PokemonSpecies } from './pokemon-registry';
-import type { OwnedPokemon } from './collection';
+import { type OwnedPokemon, getCoins } from './collection';
 import { getMovesForLevel, type BattleMove } from './battle-moves';
 import { getEffectiveHpRatio } from './pokemon-health';
 
@@ -54,9 +54,10 @@ export interface BattleTurnLog {
 }
 
 export interface BattleReward {
-  coins: number;
+  coins: number;       // positive = earned, negative = lost
   exp: number;
   bonusItems: { name: string; emoji: string; count: number }[];
+  coinsLost: number;   // how much coins lost on defeat (always >= 0)
 }
 
 export interface BattleResult {
@@ -248,24 +249,28 @@ export function simulateBattle(playerTeam: BattlePokemon[], opponentTeam: Battle
   baseCoins *= teamSizeMult;
   baseExp *= teamSizeMult;
 
-  // Loss penalty
+  // Loss: lose coins instead of gaining
+  let coinsLost = 0;
   if (!playerWon) {
-    baseCoins *= 0.3;
-    baseExp *= 0.4;
+    const currentCoins = getCoins();
+    const lossRate = Math.min(0.3, 0.1 + avgOpponentLevel * 0.005);
+    coinsLost = Math.round(currentCoins * lossRate);
+    coinsLost = Math.max(5, Math.min(coinsLost, currentCoins));
+    coinsLost = Math.round(currentCoins * lossRate);
+    coinsLost = Math.max(5, Math.min(coinsLost, currentCoins)); // at least 5, at most all coins
+    baseCoins = 0;
+    baseExp = 0;
   }
 
-  // Bonus items
+  // Bonus items (only on win)
   const bonusItems: { name: string; emoji: string; count: number }[] = [];
   if (playerWon) {
-    // Chance for potion
     if (Math.random() < 0.3) {
       bonusItems.push({ name: '상처약', emoji: '💊', count: 1 });
     }
-    // Chance for food
     if (Math.random() < 0.25) {
       bonusItems.push({ name: '먹이', emoji: '🍎', count: Math.floor(Math.random() * 2) + 1 });
     }
-    // Rare: egg ticket for high-level wins
     if (avgOpponentLevel >= 20 && Math.random() < 0.1) {
       bonusItems.push({ name: '알 교환권', emoji: '🎫', count: 1 });
     }
@@ -275,6 +280,7 @@ export function simulateBattle(playerTeam: BattlePokemon[], opponentTeam: Battle
     coins: Math.round(baseCoins),
     exp: Math.round(baseExp),
     bonusItems,
+    coinsLost,
   };
 
   // Track HP ratios for injury system
