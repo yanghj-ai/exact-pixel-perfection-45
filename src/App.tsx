@@ -2,11 +2,20 @@ import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Routes, Route } from "react-router-dom";
-import Index from "./pages/Index";
+import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import Onboarding from "./pages/Onboarding";
+import Home from "./pages/Home";
+import Insights from "./pages/Insights";
+import Profile from "./pages/Profile";
 import NotFound from "./pages/NotFound";
+import { getProfile } from "./lib/storage";
 
 const queryClient = new QueryClient();
+
+function RootRedirect() {
+  const profile = getProfile();
+  return profile.onboardingComplete ? <Navigate to="/home" replace /> : <Onboarding />;
+}
 
 const App = () => (
   <QueryClientProvider client={queryClient}>
@@ -15,8 +24,10 @@ const App = () => (
       <Sonner />
       <BrowserRouter>
         <Routes>
-          <Route path="/" element={<Index />} />
-          {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
+          <Route path="/" element={<RootRedirect />} />
+          <Route path="/home" element={<Home />} />
+          <Route path="/insights" element={<Insights />} />
+          <Route path="/profile" element={<Profile />} />
           <Route path="*" element={<NotFound />} />
         </Routes>
       </BrowserRouter>
