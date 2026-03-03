@@ -185,6 +185,8 @@ function randRange(min: number, max: number) {
   return min + Math.random() * (max - min);
 }
 
+type TouchReaction = 'none' | 'happy' | 'surprised' | 'petted';
+
 interface PetSpriteProps {
   stage: PokemonStage;
   hp: number;
@@ -193,9 +195,11 @@ interface PetSpriteProps {
   streak?: number;
   className?: string;
   size?: 'normal' | 'small';
+  onTap?: () => void;
+  onLongPress?: () => void;
 }
 
-export default function PetSprite({ stage, hp, maxHp, happiness = 3, streak = 1, className = '', size = 'normal' }: PetSpriteProps) {
+export default function PetSprite({ stage, hp, maxHp, happiness = 3, streak = 1, className = '', size = 'normal', onTap, onLongPress }: PetSpriteProps) {
   const [frame, setFrame] = useState(0);
   const mood = getMood(hp, maxHp, happiness, streak);
   const profile = MOOD_PROFILES[mood];
@@ -208,7 +212,80 @@ export default function PetSprite({ stage, hp, maxHp, happiness = 3, streak = 1,
   const [facingLeft, setFacingLeft] = useState(false);
   const [currentBehavior, setCurrentBehavior] = useState<PetBehavior>('idle');
   const [behaviorKey, setBehaviorKey] = useState(0);
-  const wanderBounds = size === 'small' ? 15 : 50; // px from center
+  const wanderBounds = size === 'small' ? 15 : 50;
+
+  // Touch interaction state
+  const [touchReaction, setTouchReaction] = useState<TouchReaction>('none');
+  const [reactionKey, setReactionKey] = useState(0);
+  const [touchEmojis, setTouchEmojis] = useState<{ id: number; emoji: string; x: number }[]>([]);
+  const longPressTimerRef = useRef<number | null>(null);
+  const touchStartRef = useRef<number>(0);
+
+  const triggerReaction = useCallback((type: TouchReaction) => {
+    setTouchReaction(type);
+    setReactionKey((k) => k + 1);
+    // Auto-clear reaction
+    setTimeout(() => setTouchReaction('none'), 1200);
+  }, []);
+
+  const spawnTouchEmojis = useCallback((type: TouchReaction) => {
+    const emojis = type === 'happy'
+      ? ['❤️', '😊', '✨', '💕']
+      : type === 'surprised'
+      ? ['❗', '😲', '💥', '⚡']
+      : ['💖', '😍', '✨', '🥰'];
+    const newEmojis = Array.from({ length: 4 }, (_, i) => ({
+      id: Date.now() + i,
+      emoji: emojis[i % emojis.length],
+      x: (i - 1.5) * 25,
+    }));
+    setTouchEmojis(newEmojis);
+    setTimeout(() => setTouchEmojis([]), 1500);
+  }, []);
+
+  const handlePointerDown = useCallback(() => {
+    if (size === 'small') return;
+    touchStartRef.current = Date.now();
+    longPressTimerRef.current = window.setTimeout(() => {
+      triggerReaction('surprised');
+      spawnTouchEmojis('surprised');
+      onLongPress?.();
+    }, 600);
+  }, [size, triggerReaction, spawnTouchEmojis, onLongPress]);
+
+  const handlePointerUp = useCallback(() => {
+    if (size === 'small') return;
+    const elapsed = Date.now() - touchStartRef.current;
+    if (longPressTimerRef.current) {
+      clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = null;
+    }
+    if (elapsed < 600) {
+      triggerReaction('happy');
+      spawnTouchEmojis('happy');
+      onTap?.();
+    }
+  }, [size, triggerReaction, spawnTouchEmojis, onTap]);
+
+  const handlePointerLeave = useCallback(() => {
+    if (longPressTimerRef.current) {
+      clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = null;
+    }
+  }, []);
+
+  const getTouchAnimation = () => {
+    switch (touchReaction) {
+      case 'happy':
+        return { y: [0, -15, 0, -8, 0], scale: [1, 1.15, 1, 1.08, 1], rotate: [0, -5, 5, -3, 0] };
+      case 'surprised':
+        return { y: [0, -25, 0], scale: [1, 0.85, 1.2, 1], rotate: [0, 0, 10, -10, 0] };
+      case 'petted':
+        return { scale: [1, 1.05, 1], rotate: [0, 3, -3, 0] };
+      default:
+        return {};
+    }
+  };
 
   // Sprite frame animation
   useEffect(() => {
@@ -296,6 +373,22 @@ export default function PetSprite({ stage, hp, maxHp, happiness = 3, streak = 1,
       className={`relative flex items-center justify-center ${className}`}
       style={{ width: size === 'small' ? 70 : displaySize + wanderBounds * 2 + 20, height: size === 'small' ? 70 : displaySize + 40 }}
     >
+      {/* Touch reaction emojis */}
+      <AnimatePresence>
+        {touchEmojis.map((item) => (
+          <motion.span
+            key={item.id}
+            initial={{ opacity: 1, y: 0, x: item.x, scale: 0 }}
+            animate={{ opacity: 0, y: -70, scale: 1.3 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 1.2, ease: 'easeOut' }}
+            className="absolute top-10 text-2xl pointer-events-none z-30"
+          >
+            {item.emoji}
+          </motion.span>
+        ))}
+      </AnimatePresence>
+
       {/* Ambient glow - follows pet */}
       {profile.glowOpacity > 0 && size === 'normal' && (
         <motion.div
@@ -357,40 +450,51 @@ export default function PetSprite({ stage, hp, maxHp, happiness = 3, streak = 1,
         </motion.div>
       )}
 
-      {/* Main pet container — moves around */}
+      {/* Main pet container — moves around, touch-interactive */}
       <motion.div
-        style={{ width: displaySize, height: displaySize, position: 'absolute' }}
+        style={{ width: displaySize, height: displaySize, position: 'absolute', cursor: size === 'normal' ? 'pointer' : 'default' }}
         animate={{ x: posX, y: posY }}
         transition={{ duration: 1.5, ease: 'easeInOut' }}
+        onPointerDown={handlePointerDown}
+        onPointerUp={handlePointerUp}
+        onPointerLeave={handlePointerLeave}
       >
-        {/* Behavior sub-animation */}
+        {/* Touch reaction layer */}
         <motion.div
-          key={behaviorKey}
+          key={`reaction-${reactionKey}`}
           className="w-full h-full"
-          animate={getBehaviorAnimation()}
-          transition={{
-            duration: getBehaviorDuration(),
-            repeat: currentBehavior === 'idle' || currentBehavior === 'sleep' || currentBehavior === 'walk' ? Infinity : 0,
-            ease: 'easeInOut',
-          }}
+          animate={touchReaction !== 'none' ? getTouchAnimation() : {}}
+          transition={{ duration: touchReaction === 'surprised' ? 0.6 : 0.8, ease: 'easeOut' }}
         >
-          {/* Individual frame */}
-          <div
-            className="w-full h-full overflow-hidden"
-            style={{
-              filter: profile.filter,
-              transform: facingLeft ? 'scaleX(-1)' : 'scaleX(1)',
-              transition: 'transform 0.2s ease',
+          {/* Behavior sub-animation */}
+          <motion.div
+            key={behaviorKey}
+            className="w-full h-full"
+            animate={touchReaction === 'none' ? getBehaviorAnimation() : {}}
+            transition={{
+              duration: getBehaviorDuration(),
+              repeat: currentBehavior === 'idle' || currentBehavior === 'sleep' || currentBehavior === 'walk' ? Infinity : 0,
+              ease: 'easeInOut',
             }}
           >
-            <img
-              src={currentFrameSrc}
-              alt={stage}
-              className="w-full h-full object-contain"
-              style={{ imageRendering: 'auto' }}
-              draggable={false}
-            />
-          </div>
+            {/* Individual frame */}
+            <div
+              className="w-full h-full overflow-hidden"
+              style={{
+                filter: profile.filter,
+                transform: facingLeft ? 'scaleX(-1)' : 'scaleX(1)',
+                transition: 'transform 0.2s ease',
+              }}
+            >
+              <img
+                src={currentFrameSrc}
+                alt={stage}
+                className="w-full h-full object-contain"
+                style={{ imageRendering: 'auto' }}
+                draggable={false}
+              />
+            </div>
+          </motion.div>
         </motion.div>
       </motion.div>
 

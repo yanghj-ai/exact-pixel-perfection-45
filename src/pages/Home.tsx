@@ -3,11 +3,14 @@ import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { getProfile } from '@/lib/storage';
 import { getPet, savePet, applyHpDecay, feedPet, interactPet, getRandomDialogue, getStageInfo, getRequiredExp } from '@/lib/pet';
-import type { PetState } from '@/lib/pet';
+import type { PetState, LevelUpResult } from '@/lib/pet';
+import { checkAndGrantAttendance } from '@/lib/attendance';
 import { Flame, Apple, Handshake, Dumbbell } from 'lucide-react';
 import { toast } from 'sonner';
 import PetSprite from '@/components/PetSprite';
 import BottomNav from '@/components/BottomNav';
+import LevelUpOverlay from '@/components/LevelUpOverlay';
+import AttendanceBonus from '@/components/AttendanceBonus';
 
 export default function Home() {
   const navigate = useNavigate();
@@ -15,6 +18,11 @@ export default function Home() {
   const [pet, setPet] = useState<PetState>(getPet());
   const [dialogue, setDialogue] = useState('');
   const [hearts, setHearts] = useState<number[]>([]);
+
+  // Overlays
+  const [levelUpResult, setLevelUpResult] = useState<LevelUpResult | null>(null);
+  const [showAttendance, setShowAttendance] = useState(false);
+  const [attendanceData, setAttendanceData] = useState<{ consecutiveDays: number; bonusFood: number; bonusExp: number } | null>(null);
 
   useEffect(() => {
     if (!profile.onboardingComplete) {
@@ -26,6 +34,23 @@ export default function Home() {
     setPet(updated);
     // Set initial dialogue
     setDialogue(getRandomDialogue(updated.hp <= 0 ? 'hungry' : 'idle'));
+
+    // Check attendance bonus
+    const attendance = checkAndGrantAttendance();
+    if (attendance.isNewDay) {
+      setPet(getPet()); // refresh pet after rewards
+      setAttendanceData({
+        consecutiveDays: attendance.consecutiveDays,
+        bonusFood: attendance.bonusFood,
+        bonusExp: attendance.bonusExp,
+      });
+      // Show attendance after a short delay
+      setTimeout(() => setShowAttendance(true), 800);
+      // If level up from attendance, show after attendance closes
+      if (attendance.levelUp) {
+        setLevelUpResult(attendance.levelUp);
+      }
+    }
   }, []);
 
   const stageInfo = getStageInfo(pet.stage);
@@ -51,7 +76,6 @@ export default function Home() {
     const updated = interactPet(pet);
     setPet(updated);
     setDialogue(getRandomDialogue('interact'));
-    // Show floating hearts
     const newHearts = Array.from({ length: 5 }, (_, i) => Date.now() + i);
     setHearts(newHearts);
     setTimeout(() => setHearts([]), 1500);
@@ -60,6 +84,25 @@ export default function Home() {
   const handleExercise = useCallback(() => {
     navigate('/routine');
   }, [navigate]);
+
+  // Pet touch callbacks
+  const handlePetTap = useCallback(() => {
+    const updated = interactPet(pet);
+    setPet(updated);
+    setDialogue(getRandomDialogue('interact'));
+  }, [pet]);
+
+  const handlePetLongPress = useCallback(() => {
+    setDialogue('으악! 깜짝이야! 😲');
+  }, []);
+
+  const handleAttendanceClose = useCallback(() => {
+    setShowAttendance(false);
+    // Show level-up after attendance if any
+    if (levelUpResult) {
+      setTimeout(() => {}, 300);
+    }
+  }, [levelUpResult]);
 
   const happinessHearts = Math.round(pet.happiness);
 
@@ -96,8 +139,16 @@ export default function Home() {
             ))}
           </AnimatePresence>
 
-          {/* Pixel art pet */}
-          <PetSprite stage={pet.stage} hp={pet.hp} maxHp={pet.maxHp} happiness={pet.happiness} streak={profile.streak} />
+          {/* Pixel art pet - now with touch interactions */}
+          <PetSprite
+            stage={pet.stage}
+            hp={pet.hp}
+            maxHp={pet.maxHp}
+            happiness={pet.happiness}
+            streak={profile.streak}
+            onTap={handlePetTap}
+            onLongPress={handlePetLongPress}
+          />
 
           {/* Pet name */}
           <p className="mt-3 text-lg font-bold text-foreground">{pet.name}</p>
@@ -215,22 +266,43 @@ export default function Home() {
           </div>
           <div className="flex-1">
             <p className="text-xs text-muted-foreground">연속 출석</p>
-            <p className="text-lg font-bold text-foreground">{profile.streak}일</p>
+            <p className="text-lg font-bold text-foreground">{profile.consecutiveLoginDays || profile.streak}일</p>
           </div>
           <div className="flex gap-1">
-            {[...Array(7)].map((_, i) => (
-              <div
-                key={i}
-                className={`h-5 w-1.5 rounded-full ${
-                  i < (profile.streak % 7 || (profile.streak > 0 ? 7 : 0)) ? 'gradient-primary' : 'bg-muted'
-                }`}
-              />
-            ))}
+            {[...Array(7)].map((_, i) => {
+              const days = profile.consecutiveLoginDays || profile.streak;
+              return (
+                <div
+                  key={i}
+                  className={`h-5 w-1.5 rounded-full ${
+                    i < (days % 7 || (days > 0 ? 7 : 0)) ? 'gradient-primary' : 'bg-muted'
+                  }`}
+                />
+              );
+            })}
           </div>
         </motion.div>
       </div>
 
       <BottomNav />
+
+      {/* Level Up Overlay */}
+      <LevelUpOverlay
+        result={levelUpResult}
+        pet={pet}
+        onClose={() => setLevelUpResult(null)}
+      />
+
+      {/* Attendance Bonus Overlay */}
+      {attendanceData && (
+        <AttendanceBonus
+          show={showAttendance}
+          consecutiveDays={attendanceData.consecutiveDays}
+          bonusFood={attendanceData.bonusFood}
+          bonusExp={attendanceData.bonusExp}
+          onClose={handleAttendanceClose}
+        />
+      )}
     </div>
   );
 }
