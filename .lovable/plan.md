@@ -1,27 +1,36 @@
 
 
-## STEP 4: 인사이트 대시보드
+## 고품질 스프라이트시트 재생성 계획
+
+### 현실적 고려사항
+
+AI 이미지 생성으로 **30프레임 일관된 스프라이트시트**를 한 번에 만드는 것은 기술적으로 매우 어렵습니다. AI는 프레임 간 캐릭터 일관성을 완벽히 유지하기 어렵기 때문입니다.
+
+**추천 접근법:** **8프레임**으로 업그레이드하되, 각 프레임의 품질과 일관성을 최대화합니다. 8프레임이면 걷기/뛰기/숨쉬기 등 부드러운 애니메이션을 충분히 표현할 수 있습니다.
 
 ### 구현 내용
 
-**1. 더미 데이터 생성 (`src/lib/insights-data.ts`)**
-- 최근 7일치 데이터: 날짜, 완료율(%), 완료 활동 목록, 루틴 후 기분
-- `getWeeklyData()` 함수로 정적 더미 데이터 반환
-- TOP 3 활동 집계 함수, 기분 변화 데이터 함수
+1. **Edge Function 생성** (`generate-spritesheet`)
+   - Lovable AI (`google/gemini-2.5-flash-image`)를 사용해 각 진화 단계별 8프레임 스프라이트시트 생성
+   - 프롬프트: "pixel art spritesheet, 8 frames horizontal strip, [character] walking cycle, consistent style, transparent background, 32-bit retro game style"
+   - 생성된 이미지를 Supabase Storage에 저장
 
-**2. 인사이트 페이지 리빌드 (`src/pages/Insights.tsx`)**
-- 4개 섹션으로 구성, `framer-motion` 입장 애니메이션 적용
+2. **Storage 버킷 설정**
+   - `sprites` 버킷 생성 (public 읽기)
+   - charmander, charmeleon, charizard 각각 저장
 
-| 섹션 | 차트/컴포넌트 | 설명 |
-|------|-------------|------|
-| 스트릭 강조 | 큰 숫자 + 불꽃 아이콘 | `getProfile().streak` 표시, glass-card |
-| 주간 완료율 | `BarChart` (recharts) | 7일 막대 차트, teal 컬러, 요일 X축 |
-| TOP 3 활동 | 순위 리스트 | 이모지 + 활동명 + 횟수, glass-card |
-| 기분 변화 | `LineChart` (recharts) | 7일 기분 점수 라인, mint 그라데이션 area fill |
+3. **PetSprite.tsx 업데이트**
+   - `FRAME_COUNT`를 4 → 8로 변경
+   - Storage URL에서 스프라이트시트 로드하도록 변경
+   - 폴백으로 기존 로컬 에셋 유지
 
-**3. 차트 스타일링**
-- `ChartContainer` + `ChartConfig` 사용하여 다크 테마 색상 적용
-- X축: 요일(월~일), Y축: 완료율(%) / 기분 점수
-- 툴팁은 `ChartTooltipContent` 활용
-- 차트 배경은 투명, glass-card 안에 배치
+4. **수동 대안** (AI 생성 품질이 부족할 경우)
+   - 기존 4프레임 이미지를 AI 편집으로 개선
+   - 각 프레임을 개별 생성 후 코드로 합성
+
+### 기술 세부사항
+
+- Edge Function에서 3개 진화 단계 × 1개 스프라이트시트 = 3회 AI 호출
+- 생성 후 base64 → Storage 업로드
+- 프론트엔드는 Storage URL 사용
 
