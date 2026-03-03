@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Play, Pause, Square, MapPin, Timer, Flame, Trophy, Navigation, Map, Sparkles, X } from 'lucide-react';
+import { Play, Pause, Square, MapPin, Timer, Flame, Trophy, Navigation, Map, Sparkles, X, Swords } from 'lucide-react';
 import { toast } from 'sonner';
 import {
   calculateDistance,
@@ -12,7 +12,7 @@ import {
   type RunningSession,
   type Challenge,
 } from '@/lib/running';
-import { createEgg, addDistanceToEggs, triggerEncounter, catchPokemon } from '@/lib/collection';
+import { createEgg, addDistanceToEggs, triggerEncounter, catchPokemon, markAsSeen } from '@/lib/collection';
 import { getPokemonById, RARITY_CONFIG } from '@/lib/pokemon-registry';
 import { getPet, getRequiredExp } from '@/lib/pet';
 import type { LevelUpResult } from '@/lib/pet';
@@ -21,6 +21,10 @@ import {
   getMissionProgress, recordLegendaryCatch, getNearbyHotspots,
   type LegendaryEncounter, type LegendaryHotspot, type CatchMission,
 } from '@/lib/legendary';
+import {
+  shouldEncounterNpc, generateAiNpc, resetEncounterDistance,
+  type AiNpcTrainer,
+} from '@/lib/npc-encounter';
 
 import PetSprite from '@/components/PetSprite';
 import BottomNav from '@/components/BottomNav';
@@ -56,6 +60,11 @@ export default function RunningPage() {
   const [legendaryCaught, setLegendaryCaught] = useState(false);
   const [nearbyHotspots, setNearbyHotspots] = useState<(LegendaryHotspot & { distanceKm: number; caught: boolean })[]>([]);
   const legendaryCheckedRef = useRef(false);
+
+  // NPC encounter state
+  const [npcEncounter, setNpcEncounter] = useState<AiNpcTrainer | null>(null);
+  const [isGeneratingNpc, setIsGeneratingNpc] = useState(false);
+  const lastNpcCheckDistRef = useRef(0);
 
   const watchIdRef = useRef<number | null>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -167,6 +176,45 @@ export default function RunningPage() {
     }
   }, [legendaryEncounter, currentDistance, elapsed, legendaryCaught]);
 
+  // NPC encounter check during running
+  useEffect(() => {
+    if (runState !== 'running' || isGeneratingNpc || npcEncounter) return;
+    
+    // Check every 0.3km of progress
+    if (currentDistance - lastNpcCheckDistRef.current < 0.3) return;
+    lastNpcCheckDistRef.current = currentDistance;
+
+    if (shouldEncounterNpc(currentDistance)) {
+      setIsGeneratingNpc(true);
+      generateAiNpc(currentDistance).then(npc => {
+        if (npc) {
+          // Mark NPC's pokemon as seen
+          markAsSeen(npc.teamSpeciesIds);
+          setNpcEncounter(npc);
+          toast(`⚔️ ${npc.emoji} ${npc.name}이(가) 승부를 걸어왔다!`, {
+            description: `"${npc.dialogue.before}"`,
+            duration: 5000,
+          });
+        }
+        setIsGeneratingNpc(false);
+      }).catch(() => setIsGeneratingNpc(false));
+    }
+  }, [runState, currentDistance, isGeneratingNpc, npcEncounter]);
+
+  const handleBattleNpc = () => {
+    if (!npcEncounter) return;
+    // Store NPC data in sessionStorage for Battle page
+    sessionStorage.setItem('routinmon-ai-npc', JSON.stringify(npcEncounter));
+    // Pause running
+    handlePause();
+    navigate('/battle?aiNpc=true');
+  };
+
+  const handleDeclineBattle = () => {
+    setNpcEncounter(null);
+    toast('트레이너가 떠나갔다...');
+  };
+
   const handleStart = () => {
     setRunState('running');
     setElapsed(0);
@@ -180,6 +228,9 @@ export default function RunningPage() {
     setLegendaryEncounter(null);
     setLegendaryCaught(false);
     setLegendaryMissionProgress(0);
+    setNpcEncounter(null);
+    lastNpcCheckDistRef.current = 0;
+    resetEncounterDistance();
     startGPS();
     toast('🏃 런닝 시작!', { description: '파이리와 함께 달려볼까요!' });
   };
@@ -485,6 +536,87 @@ export default function RunningPage() {
             </motion.div>
           )}
         </AnimatePresence>
+
+        {/* NPC Trainer Encounter Banner */}
+        <AnimatePresence>
+          {npcEncounter && runState !== 'idle' && (
+            <motion.div
+              initial={{ opacity: 0, y: -20, scale: 0.95 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: -20 }}
+              className="glass-card p-4 mb-4 border border-destructive/40 relative overflow-hidden"
+            >
+              <div className="absolute inset-0 bg-gradient-to-r from-destructive/5 to-primary/5" />
+              <div className="relative">
+                <div className="flex items-center gap-3 mb-3">
+                  <motion.span
+                    className="text-3xl"
+                    animate={{ scale: [1, 1.15, 1] }}
+                    transition={{ duration: 1.5, repeat: Infinity }}
+                  >
+                    {npcEncounter.emoji}
+                  </motion.span>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-bold text-foreground">{npcEncounter.name}</span>
+                      <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-medium ${
+                        npcEncounter.difficulty === 'elite' ? 'bg-accent/20 text-accent' :
+                        npcEncounter.difficulty === 'hard' ? 'bg-primary/20 text-primary' :
+                        npcEncounter.difficulty === 'medium' ? 'bg-secondary/20 text-secondary' :
+                        'bg-muted text-muted-foreground'
+                      }`}>
+                        Lv.{npcEncounter.level}
+                      </span>
+                    </div>
+                    <p className="text-xs text-muted-foreground">"{npcEncounter.dialogue.before}"</p>
+                  </div>
+                </div>
+                {/* NPC Team preview */}
+                <div className="flex gap-1.5 mb-3">
+                  {npcEncounter.teamSpeciesIds.map(id => {
+                    const sp = getPokemonById(id);
+                    return sp ? (
+                      <img key={id} src={sp.spriteUrl} alt={sp.name} className="w-8 h-8 object-contain" style={{ imageRendering: 'pixelated' }} />
+                    ) : null;
+                  })}
+                </div>
+                <div className="flex gap-2">
+                  <motion.button
+                    whileTap={{ scale: 0.95 }}
+                    onClick={handleBattleNpc}
+                    className="flex-1 flex items-center justify-center gap-1.5 rounded-xl py-2.5 gradient-primary text-primary-foreground text-sm font-bold"
+                  >
+                    <Swords size={14} /> 배틀!
+                  </motion.button>
+                  <button
+                    onClick={handleDeclineBattle}
+                    className="px-4 rounded-xl py-2.5 bg-muted text-muted-foreground text-sm"
+                  >
+                    도망
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* NPC Loading indicator */}
+        {isGeneratingNpc && runState === 'running' && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            className="glass-card p-3 mb-4 text-center border border-primary/20"
+          >
+            <motion.span
+              animate={{ rotate: 360 }}
+              transition={{ duration: 1, repeat: Infinity, ease: 'linear' }}
+              className="inline-block text-lg"
+            >
+              ⚡
+            </motion.span>
+            <p className="text-xs text-muted-foreground mt-1">풀숲에서 인기척이...</p>
+          </motion.div>
+        )}
 
         <div className="flex justify-center gap-4">
           {runState === 'idle' && (
