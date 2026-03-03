@@ -92,7 +92,7 @@ const TYPE_CHART: Partial<Record<PokemonType, { strong: PokemonType[]; weak: Pok
   normal: { strong: [], weak: ['fighting'] },
 };
 
-function getEffectiveness(attackType: PokemonType, defenderTypes: PokemonType[]): number {
+export function getEffectiveness(attackType: PokemonType, defenderTypes: PokemonType[]): number {
   let mult = 1;
   const chart = TYPE_CHART[attackType];
   if (!chart) return 1;
@@ -179,137 +179,216 @@ export function buildNpcBattleTeam(speciesIds: number[], level: number, friendsh
     .filter(Boolean) as BattlePokemon[];
 }
 
-// ─── Battle Simulation ──────────────────────────────────
+// ─── Turn-based Battle State ─────────────────────────────
 
-export function simulateBattle(playerTeam: BattlePokemon[], opponentTeam: BattlePokemon[]): BattleResult {
-  const turns: BattleTurnLog[] = [];
-  let turnCount = 0;
-  const maxTurns = 100;
+export interface TurnBasedBattleState {
+  playerTeam: BattlePokemon[];
+  opponentTeam: BattlePokemon[];
+  playerIdx: number;
+  opponentIdx: number;
+  turnCount: number;
+  turns: BattleTurnLog[];
+  phase: 'player_choose' | 'animating' | 'finished';
+  winner: 'player' | 'opponent' | null;
+}
 
-  const pTeam = playerTeam.map(p => ({ ...p }));
-  const oTeam = opponentTeam.map(p => ({ ...p }));
-
-  let pIdx = 0;
-  let oIdx = 0;
-
-  while (pIdx < pTeam.length && oIdx < oTeam.length && turnCount < maxTurns) {
-    turnCount++;
-    const attacker = pTeam[pIdx];
-    const defender = oTeam[oIdx];
-
-    // Skip if frozen (10% thaw chance)
-    if (attacker.status === 'freeze' && Math.random() > 0.1) {
-      // skip turn
-    } else if (attacker.status === 'paralyze' && Math.random() < 0.25) {
-      // paralysis skip
-    } else {
-      const playerFirst = attacker.speed >= defender.speed;
-      const first = playerFirst ? attacker : defender;
-      const second = playerFirst ? defender : attacker;
-      const firstIsPlayer = playerFirst;
-
-      const result1 = doAttack(first, second, turnCount, firstIsPlayer);
-      turns.push(result1);
-      if (result1.defenderFainted) {
-        if (firstIsPlayer) oIdx++;
-        else pIdx++;
-        if (pIdx >= pTeam.length || oIdx >= oTeam.length) break;
-        continue;
-      }
-
-      turnCount++;
-      const result2 = doAttack(second, first, turnCount, !firstIsPlayer);
-      turns.push(result2);
-      if (result2.defenderFainted) {
-        if (!firstIsPlayer) oIdx++;
-        else pIdx++;
-      }
-    }
-  }
-
-  const playerWon = oIdx >= oTeam.length;
-
-  // ─── Enhanced Rewards ─────────────────
-  const avgOpponentLevel = opponentTeam.reduce((s, p) => s + p.level, 0) / opponentTeam.length;
-  const avgPlayerLevel = playerTeam.reduce((s, p) => s + p.level, 0) / playerTeam.length;
-  const levelDiff = avgOpponentLevel - avgPlayerLevel;
-
-  // Base rewards
-  let baseCoins = 10 + avgOpponentLevel * 2;
-  let baseExp = 15 + avgOpponentLevel * 3;
-
-  // Level difference bonus (harder opponents = more rewards)
-  if (levelDiff > 0) {
-    baseCoins *= 1 + levelDiff * 0.1;
-    baseExp *= 1 + levelDiff * 0.15;
-  }
-
-  // Team size multiplier (fighting more pokemon = more rewards)
-  const teamSizeMult = 1 + (opponentTeam.length - 1) * 0.15;
-  baseCoins *= teamSizeMult;
-  baseExp *= teamSizeMult;
-
-  // Loss: lose coins instead of gaining
-  let coinsLost = 0;
-  if (!playerWon) {
-    const currentCoins = getCoins();
-    const lossRate = Math.min(0.3, 0.1 + avgOpponentLevel * 0.005);
-    coinsLost = Math.round(currentCoins * lossRate);
-    coinsLost = Math.max(5, Math.min(coinsLost, currentCoins));
-    coinsLost = Math.round(currentCoins * lossRate);
-    coinsLost = Math.max(5, Math.min(coinsLost, currentCoins)); // at least 5, at most all coins
-    baseCoins = 0;
-    baseExp = 0;
-  }
-
-  // Bonus items (only on win)
-  const bonusItems: { name: string; emoji: string; count: number }[] = [];
-  if (playerWon) {
-    if (Math.random() < 0.3) {
-      bonusItems.push({ name: '상처약', emoji: '💊', count: 1 });
-    }
-    if (Math.random() < 0.25) {
-      bonusItems.push({ name: '먹이', emoji: '🍎', count: Math.floor(Math.random() * 2) + 1 });
-    }
-    if (avgOpponentLevel >= 20 && Math.random() < 0.1) {
-      bonusItems.push({ name: '알 교환권', emoji: '🎫', count: 1 });
-    }
-  }
-
-  const rewards: BattleReward = {
-    coins: Math.round(baseCoins),
-    exp: Math.round(baseExp),
-    bonusItems,
-    coinsLost,
-  };
-
-  // Track HP ratios for injury system
-  const playerHpRatios = pTeam.map(p => ({
-    uid: p.uid,
-    hpRatio: p.currentHp / p.maxHp,
-  }));
-
+export function initTurnBattle(playerTeam: BattlePokemon[], opponentTeam: BattlePokemon[]): TurnBasedBattleState {
   return {
-    winner: playerWon ? 'player' : 'opponent',
-    playerTeam: pTeam,
-    opponentTeam: oTeam,
-    turns,
-    totalTurns: turnCount,
-    rewards,
-    playerHpRatios,
+    playerTeam: playerTeam.map(p => ({ ...p })),
+    opponentTeam: opponentTeam.map(p => ({ ...p })),
+    playerIdx: 0,
+    opponentIdx: 0,
+    turnCount: 0,
+    turns: [],
+    phase: 'player_choose',
+    winner: null,
   };
 }
 
-function doAttack(attacker: BattlePokemon, defender: BattlePokemon, turn: number, isPlayerAttacking: boolean): BattleTurnLog {
+/** Choose best move for NPC (AI) */
+function chooseNpcMove(attacker: BattlePokemon, defender: BattlePokemon): BattleMove {
   const moves = attacker.moves.length > 0 ? attacker.moves : getMovesForLevel(attacker.types, attacker.level);
-
-  // Pick best effective move
   let bestMove = moves[0];
   let bestDmg = 0;
   for (const m of moves) {
     const eff = getEffectiveness(m.type, defender.types);
     const d = m.power * eff;
     if (d > bestDmg) { bestDmg = d; bestMove = m; }
+  }
+  return bestMove;
+}
+
+/** Execute one turn: player uses chosen move, opponent auto-picks. Returns new turn logs for this turn. */
+export function executeTurn(state: TurnBasedBattleState, playerMove: BattleMove): BattleTurnLog[] {
+  const newTurns: BattleTurnLog[] = [];
+  const player = state.playerTeam[state.playerIdx];
+  const opponent = state.opponentTeam[state.opponentIdx];
+
+  if (!player || !opponent) return newTurns;
+
+  const opponentMove = chooseNpcMove(opponent, player);
+
+  state.turnCount++;
+
+  // Speed determines who goes first
+  const playerFirst = player.speed >= opponent.speed;
+  const first = playerFirst ? player : opponent;
+  const second = playerFirst ? opponent : player;
+  const firstMove = playerFirst ? playerMove : opponentMove;
+  const secondMove = playerFirst ? opponentMove : playerMove;
+  const firstIsPlayer = playerFirst;
+
+  // Skip checks for status
+  const canAct = (p: BattlePokemon) => {
+    if (p.status === 'freeze' && Math.random() > 0.1) return false;
+    if (p.status === 'paralyze' && Math.random() < 0.25) return false;
+    return true;
+  };
+
+  // First attacker
+  if (canAct(first)) {
+    const log1 = doAttack(first, second, state.turnCount, firstIsPlayer, firstMove);
+    newTurns.push(log1);
+    state.turns.push(log1);
+
+    if (log1.defenderFainted) {
+      if (firstIsPlayer) {
+        state.opponentIdx++;
+      } else {
+        state.playerIdx++;
+      }
+      if (state.playerIdx >= state.playerTeam.length) {
+        state.phase = 'finished';
+        state.winner = 'opponent';
+      } else if (state.opponentIdx >= state.opponentTeam.length) {
+        state.phase = 'finished';
+        state.winner = 'player';
+      }
+      return newTurns;
+    }
+  }
+
+  state.turnCount++;
+
+  // Second attacker
+  if (canAct(second) && second.currentHp > 0) {
+    const log2 = doAttack(second, first, state.turnCount, !firstIsPlayer, secondMove);
+    newTurns.push(log2);
+    state.turns.push(log2);
+
+    if (log2.defenderFainted) {
+      if (!firstIsPlayer) {
+        state.opponentIdx++;
+      } else {
+        state.playerIdx++;
+      }
+      if (state.playerIdx >= state.playerTeam.length) {
+        state.phase = 'finished';
+        state.winner = 'opponent';
+      } else if (state.opponentIdx >= state.opponentTeam.length) {
+        state.phase = 'finished';
+        state.winner = 'player';
+      }
+      return newTurns;
+    }
+  }
+
+  // Check if battle should continue
+  if (state.turnCount >= 200) {
+    state.phase = 'finished';
+    state.winner = 'opponent';
+  }
+
+  return newTurns;
+}
+
+/** Calculate rewards after battle ends */
+export function calculateBattleRewards(
+  state: TurnBasedBattleState,
+  originalPlayerTeam: BattlePokemon[],
+  originalOpponentTeam: BattlePokemon[]
+): BattleReward {
+  const playerWon = state.winner === 'player';
+  const avgOpponentLevel = originalOpponentTeam.reduce((s, p) => s + p.level, 0) / originalOpponentTeam.length;
+  const avgPlayerLevel = originalPlayerTeam.reduce((s, p) => s + p.level, 0) / originalPlayerTeam.length;
+  const levelDiff = avgOpponentLevel - avgPlayerLevel;
+
+  let baseCoins = 10 + avgOpponentLevel * 2;
+  let baseExp = 15 + avgOpponentLevel * 3;
+
+  if (levelDiff > 0) {
+    baseCoins *= 1 + levelDiff * 0.1;
+    baseExp *= 1 + levelDiff * 0.15;
+  }
+
+  const teamSizeMult = 1 + (originalOpponentTeam.length - 1) * 0.15;
+  baseCoins *= teamSizeMult;
+  baseExp *= teamSizeMult;
+
+  let coinsLost = 0;
+  if (!playerWon) {
+    const currentCoins = getCoins();
+    const lossRate = Math.min(0.3, 0.1 + avgOpponentLevel * 0.005);
+    coinsLost = Math.round(currentCoins * lossRate);
+    coinsLost = Math.max(5, Math.min(coinsLost, currentCoins));
+    baseCoins = 0;
+    baseExp = 0;
+  }
+
+  const bonusItems: { name: string; emoji: string; count: number }[] = [];
+  if (playerWon) {
+    if (Math.random() < 0.3) bonusItems.push({ name: '상처약', emoji: '💊', count: 1 });
+    if (Math.random() < 0.25) bonusItems.push({ name: '먹이', emoji: '🍎', count: Math.floor(Math.random() * 2) + 1 });
+    if (avgOpponentLevel >= 20 && Math.random() < 0.1) bonusItems.push({ name: '알 교환권', emoji: '🎫', count: 1 });
+  }
+
+  return {
+    coins: Math.round(baseCoins),
+    exp: Math.round(baseExp),
+    bonusItems,
+    coinsLost,
+  };
+}
+
+/** Legacy auto-battle (still used for NPC encounters during running, etc.) */
+export function simulateBattle(playerTeam: BattlePokemon[], opponentTeam: BattlePokemon[]): BattleResult {
+  const state = initTurnBattle(playerTeam, opponentTeam);
+
+  while (state.phase !== 'finished' && state.turnCount < 200) {
+    const player = state.playerTeam[state.playerIdx];
+    const opponent = state.opponentTeam[state.opponentIdx];
+    if (!player || !opponent) break;
+    const autoMove = chooseNpcMove(player, opponent);
+    executeTurn(state, autoMove);
+  }
+
+  const rewards = calculateBattleRewards(state, playerTeam, opponentTeam);
+  const playerHpRatios = state.playerTeam.map(p => ({ uid: p.uid, hpRatio: p.currentHp / p.maxHp }));
+
+  return {
+    winner: state.winner || 'opponent',
+    playerTeam: state.playerTeam,
+    opponentTeam: state.opponentTeam,
+    turns: state.turns,
+    totalTurns: state.turnCount,
+    rewards,
+    playerHpRatios,
+  };
+}
+
+function doAttack(attacker: BattlePokemon, defender: BattlePokemon, turn: number, isPlayerAttacking: boolean, chosenMove?: BattleMove): BattleTurnLog {
+  let bestMove: BattleMove;
+  if (chosenMove) {
+    bestMove = chosenMove;
+  } else {
+    const moves = attacker.moves.length > 0 ? attacker.moves : getMovesForLevel(attacker.types, attacker.level);
+    bestMove = moves[0];
+    let bestDmg = 0;
+    for (const m of moves) {
+      const eff = getEffectiveness(m.type, defender.types);
+      const d = m.power * eff;
+      if (d > bestDmg) { bestDmg = d; bestMove = m; }
+    }
   }
 
   // Accuracy check
