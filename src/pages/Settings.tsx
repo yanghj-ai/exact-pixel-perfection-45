@@ -27,6 +27,7 @@ export default function Settings() {
       localStorage.removeItem('routinmon-pet');
       localStorage.removeItem('routinmon-running');
       localStorage.removeItem('routinmon-collection');
+      localStorage.removeItem('routinmon-legendary');
       navigate('/');
     }
   };

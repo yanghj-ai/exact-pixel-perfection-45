@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Play, Pause, Square, MapPin, Timer, Flame, Trophy, Navigation, Map } from 'lucide-react';
+import { Play, Pause, Square, MapPin, Timer, Flame, Trophy, Navigation, Map, Sparkles, X } from 'lucide-react';
 import { toast } from 'sonner';
 import {
   calculateDistance,
@@ -16,6 +16,12 @@ import { createEgg, addDistanceToEggs, triggerEncounter, catchPokemon } from '@/
 import { getPokemonById, RARITY_CONFIG } from '@/lib/pokemon-registry';
 import { getPet, getRequiredExp } from '@/lib/pet';
 import type { LevelUpResult } from '@/lib/pet';
+import {
+  checkLegendaryProximity, getMissionForSpecies, checkMissionComplete,
+  getMissionProgress, recordLegendaryCatch, getNearbyHotspots,
+  type LegendaryEncounter, type LegendaryHotspot, type CatchMission,
+} from '@/lib/legendary';
+
 import PetSprite from '@/components/PetSprite';
 import BottomNav from '@/components/BottomNav';
 import LevelUpOverlay from '@/components/LevelUpOverlay';
@@ -43,6 +49,13 @@ export default function RunningPage() {
   const [foodReward, setFoodReward] = useState(0);
   const [expReward, setExpReward] = useState(0);
   const [showMap, setShowMap] = useState(false);
+
+  // Legendary encounter state
+  const [legendaryEncounter, setLegendaryEncounter] = useState<LegendaryEncounter | null>(null);
+  const [legendaryMissionProgress, setLegendaryMissionProgress] = useState(0);
+  const [legendaryCaught, setLegendaryCaught] = useState(false);
+  const [nearbyHotspots, setNearbyHotspots] = useState<(LegendaryHotspot & { distanceKm: number; caught: boolean })[]>([]);
+  const legendaryCheckedRef = useRef(false);
 
   const watchIdRef = useRef<number | null>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -103,6 +116,23 @@ export default function RunningPage() {
           const elapsedMin = elapsedRef.current / 60;
           setCurrentPace(elapsedMin / dist);
         }
+
+        // Check legendary hotspot proximity
+        if (!legendaryCheckedRef.current) {
+          const hotspot = checkLegendaryProximity(pos.coords.latitude, pos.coords.longitude);
+          if (hotspot) {
+            legendaryCheckedRef.current = true;
+            const mission = getMissionForSpecies(hotspot.speciesId);
+            setLegendaryEncounter({ hotspot, mission, startedAt: Date.now(), missionActive: true });
+            toast(`🌟 전설의 포켓몬 ${hotspot.name} 발견!`, {
+              description: mission.description,
+              duration: 6000,
+            });
+          }
+        }
+
+        // Update nearby hotspots for idle display
+        setNearbyHotspots(getNearbyHotspots(pos.coords.latitude, pos.coords.longitude));
       },
       (err) => {
         setGpsError(`GPS 오류: ${err.message}`);
@@ -118,6 +148,25 @@ export default function RunningPage() {
     }
   }, []);
 
+  // Legendary mission progress check
+  useEffect(() => {
+    if (!legendaryEncounter || !legendaryEncounter.missionActive || legendaryCaught) return;
+    const pace = currentDistance > 0 && elapsed > 0 ? (elapsed / 60) / currentDistance : 0;
+    const progress = getMissionProgress(legendaryEncounter.mission, currentDistance, elapsed, pace);
+    setLegendaryMissionProgress(progress);
+
+    if (checkMissionComplete(legendaryEncounter.mission, currentDistance, elapsed, pace)) {
+      // Mission complete — catch the legendary!
+      setLegendaryCaught(true);
+      catchPokemon(legendaryEncounter.hotspot.speciesId);
+      recordLegendaryCatch(legendaryEncounter.hotspot.id);
+      toast(`🌟 ${legendaryEncounter.hotspot.name}을(를) 포획했다!`, {
+        description: '전설의 포켓몬이 동료가 되었습니다!',
+        duration: 8000,
+      });
+    }
+  }, [legendaryEncounter, currentDistance, elapsed, legendaryCaught]);
+
   const handleStart = () => {
     setRunState('running');
     setElapsed(0);
@@ -127,6 +176,10 @@ export default function RunningPage() {
     setCurrentDistance(0);
     setCurrentPace(0);
     setShowMap(true);
+    legendaryCheckedRef.current = false;
+    setLegendaryEncounter(null);
+    setLegendaryCaught(false);
+    setLegendaryMissionProgress(0);
     startGPS();
     toast('🏃 런닝 시작!', { description: '파이리와 함께 달려볼까요!' });
   };
@@ -376,7 +429,63 @@ export default function RunningPage() {
           )}
         </div>
 
-        {/* Controls */}
+        {/* Legendary Mission Banner */}
+        <AnimatePresence>
+          {legendaryEncounter && runState !== 'idle' && (
+            <motion.div
+              initial={{ opacity: 0, y: -20, scale: 0.95 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: -20 }}
+              className={`glass-card p-4 mb-4 border ${legendaryCaught ? 'border-secondary/50' : 'border-primary/40'} relative overflow-hidden`}
+            >
+              {legendaryCaught && (
+                <div className="absolute inset-0 gradient-primary opacity-5" />
+              )}
+              <div className="flex items-center gap-3">
+                <motion.div
+                  animate={legendaryCaught ? { scale: [1, 1.2, 1] } : { rotate: [0, -5, 5, 0] }}
+                  transition={{ duration: 2, repeat: Infinity }}
+                  className="flex-shrink-0"
+                >
+                  {(() => {
+                    const sp = getPokemonById(legendaryEncounter.hotspot.speciesId);
+                    return sp ? (
+                      <img src={sp.spriteUrl} alt={sp.name} className="w-14 h-14 object-contain" style={{ imageRendering: 'pixelated' }} />
+                    ) : (
+                      <span className="text-3xl">{legendaryEncounter.hotspot.emoji}</span>
+                    );
+                  })()}
+                </motion.div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-1.5 mb-1">
+                    <Sparkles size={12} className="text-secondary" />
+                    <span className="text-xs font-bold text-foreground">
+                      {legendaryCaught ? `${legendaryEncounter.hotspot.name} 포획 완료!` : `${legendaryEncounter.hotspot.name} 조우!`}
+                    </span>
+                  </div>
+                  {!legendaryCaught && (
+                    <>
+                      <p className="text-[10px] text-muted-foreground mb-1.5">{legendaryEncounter.mission.label}: {legendaryEncounter.mission.description}</p>
+                      <div className="h-2 rounded-full bg-muted overflow-hidden">
+                        <motion.div
+                          className="h-full rounded-full gradient-warm"
+                          initial={false}
+                          animate={{ width: `${legendaryMissionProgress}%` }}
+                          transition={{ duration: 0.3 }}
+                        />
+                      </div>
+                      <p className="text-[9px] text-muted-foreground mt-0.5 text-right">{Math.round(legendaryMissionProgress)}%</p>
+                    </>
+                  )}
+                  {legendaryCaught && (
+                    <p className="text-[10px] text-secondary">🎉 축하합니다! 전설의 포켓몬을 포획했습니다!</p>
+                  )}
+                </div>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
         <div className="flex justify-center gap-4">
           {runState === 'idle' && (
             <motion.button
@@ -417,6 +526,54 @@ export default function RunningPage() {
               <span className="text-muted-foreground">🍎 1km당 먹이 1개</span>
               <span className="text-muted-foreground">⚡ 1km당 EXP 10</span>
             </div>
+          </motion.div>
+        )}
+
+        {/* Nearby Legendary Hotspots */}
+        {runState === 'idle' && nearbyHotspots.length > 0 && (
+          <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }} className="mt-4 glass-card p-4 border border-secondary/20">
+            <div className="flex items-center gap-2 mb-3">
+              <Sparkles size={14} className="text-secondary" />
+              <span className="text-xs font-bold text-foreground">근처 전설의 포켓몬</span>
+            </div>
+            <div className="space-y-2">
+              {nearbyHotspots.slice(0, 3).map(h => {
+                const sp = getPokemonById(h.speciesId);
+                return (
+                  <div key={h.id} className={`flex items-center gap-3 p-2 rounded-xl ${h.caught ? 'bg-muted/30' : 'bg-secondary/5 border border-secondary/10'}`}>
+                    {sp ? (
+                      <img src={sp.spriteUrl} alt={sp.name} className={`w-8 h-8 object-contain ${h.caught ? 'grayscale opacity-50' : ''}`} style={{ imageRendering: 'pixelated' }} />
+                    ) : (
+                      <span className="text-xl">{h.emoji}</span>
+                    )}
+                    <div className="flex-1 min-w-0">
+                      <span className="text-xs font-semibold text-foreground">{h.name}</span>
+                      <p className="text-[10px] text-muted-foreground truncate">{h.caught ? '포획 완료' : h.hint}</p>
+                    </div>
+                    <span className="text-[10px] text-muted-foreground flex-shrink-0">{h.distanceKm.toFixed(1)}km</span>
+                  </div>
+                );
+              })}
+            </div>
+          </motion.div>
+        )}
+
+        {/* Scan for hotspots on idle */}
+        {runState === 'idle' && nearbyHotspots.length === 0 && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.3 }} className="mt-4">
+            <button
+              onClick={() => {
+                navigator.geolocation?.getCurrentPosition(
+                  pos => setNearbyHotspots(getNearbyHotspots(pos.coords.latitude, pos.coords.longitude)),
+                  () => toast('위치를 확인할 수 없습니다'),
+                  { enableHighAccuracy: true }
+                );
+              }}
+              className="w-full glass-card p-3 text-center text-xs text-muted-foreground hover:text-foreground transition-colors"
+            >
+              <MapPin size={14} className="inline mr-1.5" />
+              근처 전설의 포켓몬 탐색하기
+            </button>
           </motion.div>
         )}
       </div>
