@@ -12,7 +12,7 @@ import {
   type RunningSession,
   type Challenge,
 } from '@/lib/running';
-import { createEgg, addDistanceToEggs, triggerEncounter, catchPokemon, markAsSeen } from '@/lib/collection';
+import { createEgg, triggerEncounter, catchPokemon, markAsSeen } from '@/lib/collection';
 import { getPokemonById, RARITY_CONFIG } from '@/lib/pokemon-registry';
 import { getPet, getRequiredExp } from '@/lib/pet';
 import type { LevelUpResult } from '@/lib/pet';
@@ -253,7 +253,7 @@ export default function RunningPage() {
       setRunState('idle');
       return;
     }
-    const { session, stats, levelUp, completedChallenges: completed } = completeRunningSession(routeRef.current, elapsedRef.current);
+    const { session, stats, levelUp, completedChallenges: completed, hatchedEggs } = completeRunningSession(routeRef.current, elapsedRef.current);
     setCompletedSession(session);
     setLevelUpResult(levelUp);
     setCompletedChallenges(completed);
@@ -262,8 +262,7 @@ export default function RunningPage() {
     setFoodReward(food);
     setExpReward(exp);
 
-    // Hatch eggs with distance
-    const hatchedEggs = addDistanceToEggs(session.distanceKm);
+    // Show hatched eggs
     if (hatchedEggs.length > 0) {
       hatchedEggs.forEach(egg => {
         const species = getPokemonById(egg.speciesId);
