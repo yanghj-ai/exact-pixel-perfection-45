@@ -5,6 +5,8 @@ export interface UserProfile {
   onboardingComplete: boolean;
   streak: number;
   lastCompletedDate: string | null;
+  notificationsEnabled: boolean;
+  darkMode: boolean;
 }
 
 const DEFAULT_PROFILE: UserProfile = {
@@ -14,6 +16,8 @@ const DEFAULT_PROFILE: UserProfile = {
   onboardingComplete: false,
   streak: 0,
   lastCompletedDate: null,
+  notificationsEnabled: true,
+  darkMode: true,
 };
 
 export function getProfile(): UserProfile {

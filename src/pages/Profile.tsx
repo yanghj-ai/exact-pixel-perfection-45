@@ -1,8 +1,11 @@
-import { getProfile } from '@/lib/storage';
+import { useState } from 'react';
+import { getProfile, saveProfile } from '@/lib/storage';
 import { getLevelInfo, getBadges } from '@/lib/gamification';
 import BottomNav from '@/components/BottomNav';
 import { motion } from 'framer-motion';
-import { User, Settings, ChevronRight, Bell, Moon, HelpCircle } from 'lucide-react';
+import { User, Bell, Moon, HelpCircle, RotateCcw } from 'lucide-react';
+import { Switch } from '@/components/ui/switch';
+import { toast } from 'sonner';
 
 const fadeUp = {
   hidden: { opacity: 0, y: 16 },
@@ -13,18 +16,38 @@ const fadeUp = {
 };
 
 export default function Profile() {
-  const profile = getProfile();
-  const totalXP = profile.streak * 15; // simple XP formula
+  const [profile, setProfile] = useState(getProfile());
+  const totalXP = profile.streak * 15;
   const totalRoutines = Math.max(profile.streak, 0);
   const level = getLevelInfo(totalXP);
   const badges = getBadges(profile.streak, totalRoutines);
   const unlockedCount = badges.filter((b) => b.unlocked).length;
 
-  const settingsItems = [
-    { icon: Bell, label: '알림 설정' },
-    { icon: Moon, label: '다크 모드' },
-    { icon: HelpCircle, label: '도움말 & 피드백' },
-  ];
+  const updateSetting = (key: 'notificationsEnabled' | 'darkMode', value: boolean) => {
+    const updated = saveProfile({ [key]: value });
+    setProfile(updated);
+
+    if (key === 'darkMode') {
+      if (value) {
+        document.documentElement.classList.add('dark');
+        document.documentElement.classList.remove('light');
+      } else {
+        document.documentElement.classList.remove('dark');
+        document.documentElement.classList.add('light');
+      }
+    }
+
+    if (key === 'notificationsEnabled') {
+      toast(value ? '🔔 알림이 켜졌어요' : '🔕 알림이 꺼졌어요', { duration: 2000 });
+    }
+  };
+
+  const handleResetData = () => {
+    if (window.confirm('모든 데이터를 초기화할까요? 이 작업은 되돌릴 수 없습니다.')) {
+      localStorage.removeItem('routinit-profile');
+      window.location.href = '/';
+    }
+  };
 
   return (
     <div className="min-h-screen pb-24">
@@ -116,18 +139,44 @@ export default function Profile() {
           variants={fadeUp} initial="hidden" animate="visible" custom={3}
         >
           <h2 className="font-semibold text-foreground px-5 pt-5 pb-3">설정</h2>
-          {settingsItems.map((item, i) => (
-            <button
-              key={item.label}
-              className={`flex w-full items-center gap-3 px-5 py-3.5 text-sm text-foreground hover:bg-muted/40 transition-colors ${
-                i < settingsItems.length - 1 ? 'border-b border-border/30' : ''
-              }`}
-            >
-              <item.icon className="h-4 w-4 text-muted-foreground" />
-              <span className="flex-1 text-left">{item.label}</span>
-              <ChevronRight className="h-4 w-4 text-muted-foreground" />
-            </button>
-          ))}
+
+          {/* 알림 설정 */}
+          <div className="flex w-full items-center gap-3 px-5 py-3.5 border-b border-border/30">
+            <Bell className="h-4 w-4 text-muted-foreground" />
+            <span className="flex-1 text-sm text-foreground">알림 설정</span>
+            <Switch
+              checked={profile.notificationsEnabled}
+              onCheckedChange={(v) => updateSetting('notificationsEnabled', v)}
+            />
+          </div>
+
+          {/* 다크 모드 */}
+          <div className="flex w-full items-center gap-3 px-5 py-3.5 border-b border-border/30">
+            <Moon className="h-4 w-4 text-muted-foreground" />
+            <span className="flex-1 text-sm text-foreground">다크 모드</span>
+            <Switch
+              checked={profile.darkMode}
+              onCheckedChange={(v) => updateSetting('darkMode', v)}
+            />
+          </div>
+
+          {/* 도움말 */}
+          <button
+            onClick={() => toast('📬 피드백은 준비 중이에요!', { duration: 2000 })}
+            className="flex w-full items-center gap-3 px-5 py-3.5 text-sm text-foreground hover:bg-muted/40 transition-colors border-b border-border/30"
+          >
+            <HelpCircle className="h-4 w-4 text-muted-foreground" />
+            <span className="flex-1 text-left">도움말 & 피드백</span>
+          </button>
+
+          {/* 데이터 초기화 */}
+          <button
+            onClick={handleResetData}
+            className="flex w-full items-center gap-3 px-5 py-3.5 text-sm text-destructive hover:bg-destructive/10 transition-colors"
+          >
+            <RotateCcw className="h-4 w-4" />
+            <span className="flex-1 text-left">데이터 초기화</span>
+          </button>
         </motion.div>
       </div>
       <BottomNav />
