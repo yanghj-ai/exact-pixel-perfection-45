@@ -10,6 +10,8 @@ import RunningHistory from "./pages/RunningHistory";
 import Pokedex from "./pages/Pokedex";
 import Settings from "./pages/Settings";
 import Party from "./pages/Party";
+import Battle from "./pages/Battle";
+import Ranking from "./pages/Ranking";
 import NotFound from "./pages/NotFound";
 import { getProfile } from "./lib/storage";
 
@@ -33,6 +35,8 @@ const App = () => (
           <Route path="/history" element={<RunningHistory />} />
           <Route path="/pokedex" element={<Pokedex />} />
           <Route path="/party" element={<Party />} />
+          <Route path="/battle" element={<Battle />} />
+          <Route path="/ranking" element={<Ranking />} />
           <Route path="/settings" element={<Settings />} />
           <Route path="*" element={<NotFound />} />
         </Routes>
