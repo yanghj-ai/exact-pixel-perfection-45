@@ -18,6 +18,7 @@ import {
 import { getInventory, SHOP_ITEMS, useRareCandy, useEvolutionStone } from '@/lib/shop';
 import BottomNav from '@/components/BottomNav';
 import DebugPanel from '@/components/DebugPanel';
+import ItemEffectOverlay, { type ItemEffectData } from '@/components/ItemEffectOverlay';
 
 const SPRITE_BASE = 'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/versions/generation-v/black-white/animated';
 
@@ -43,6 +44,8 @@ export default function Party() {
   const [interactCooldown, setInteractCooldown] = useState<Set<string>>(new Set());
   // Item menu for leader
   const [showItemMenu, setShowItemMenu] = useState(false);
+  // Item effect overlay
+  const [itemEffect, setItemEffect] = useState<ItemEffectData | null>(null);
 
   const handleInteract = useCallback((uid: string) => {
     if (interactCooldown.has(uid)) {
@@ -505,6 +508,8 @@ export default function Party() {
                             variant="outline"
                             size="sm"
                             onClick={() => {
+                              const beforeLevel = selected.level;
+                              const beforeSpeciesId = selected.speciesId;
                               let result;
                               if (item.effect === 'level_up' || item.effect === 'level_up_5') {
                                 result = useRareCandy(selected.uid, item.effect === 'level_up_5' ? 5 : 1);
@@ -515,10 +520,28 @@ export default function Party() {
                               }
 
                               if (result.success) {
-                                toast.success(result.message);
-                                // Refresh selected pokemon data
                                 const updated = getCollection().owned.find(p => p.uid === selected.uid);
-                                if (updated) setSelected(updated);
+                                if (updated) {
+                                  if ('evolvedSpeciesId' in result && result.evolvedSpeciesId) {
+                                    setItemEffect({
+                                      type: 'evolution',
+                                      pokemonUid: selected.uid,
+                                      speciesId: result.evolvedSpeciesId,
+                                      prevSpeciesId: beforeSpeciesId,
+                                      newSpeciesId: result.evolvedSpeciesId,
+                                    });
+                                  } else {
+                                    setItemEffect({
+                                      type: 'level_up',
+                                      pokemonUid: selected.uid,
+                                      speciesId: updated.speciesId,
+                                      levelBefore: beforeLevel,
+                                      levelAfter: updated.level,
+                                      levelsGained: updated.level - beforeLevel,
+                                    });
+                                  }
+                                  setSelected(updated);
+                                }
                                 refresh();
                               } else {
                                 toast.error(result.message);
@@ -589,6 +612,8 @@ export default function Party() {
                     key={item.id}
                     variant="outline"
                     onClick={() => {
+                      const beforeLevel = selected.level;
+                      const beforeSpeciesId = selected.speciesId;
                       let result;
                       if (item.effect === 'level_up' || item.effect === 'level_up_5') {
                         result = useRareCandy(selected.uid, item.effect === 'level_up_5' ? 5 : 1);
@@ -598,9 +623,29 @@ export default function Party() {
                         return;
                       }
                       if (result.success) {
-                        toast.success(result.message);
+                        setShowItemMenu(false);
                         const updated = getCollection().owned.find(p => p.uid === selected.uid);
-                        if (updated) setSelected(updated);
+                        if (updated) {
+                          if ('evolvedSpeciesId' in result && result.evolvedSpeciesId) {
+                            setItemEffect({
+                              type: 'evolution',
+                              pokemonUid: selected.uid,
+                              speciesId: result.evolvedSpeciesId,
+                              prevSpeciesId: beforeSpeciesId,
+                              newSpeciesId: result.evolvedSpeciesId,
+                            });
+                          } else {
+                            setItemEffect({
+                              type: 'level_up',
+                              pokemonUid: selected.uid,
+                              speciesId: updated.speciesId,
+                              levelBefore: beforeLevel,
+                              levelAfter: updated.level,
+                              levelsGained: updated.level - beforeLevel,
+                            });
+                          }
+                          setSelected(updated);
+                        }
                         refresh();
                       } else {
                         toast.error(result.message);
@@ -659,6 +704,7 @@ export default function Party() {
         </DialogContent>
       </Dialog>
 
+      <ItemEffectOverlay effect={itemEffect} onClose={() => setItemEffect(null)} />
       <DebugPanel onRefresh={refresh} />
       <BottomNav />
     </div>
