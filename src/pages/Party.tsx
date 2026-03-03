@@ -151,15 +151,30 @@ export default function Party() {
                   onClick={() => {
                     if (member) {
                       if (i === 0) {
-                        // Already leader → open detail
                         setSelected(member);
                       } else {
-                        // Set as leader
                         setAsLeader(member.uid);
                         toast('🌟 리더로 지정했어요!');
                         refresh();
                       }
                     }
+                  }}
+                  onContextMenu={(e) => {
+                    e.preventDefault();
+                    if (member && i !== 0) setSelected(member);
+                  }}
+                  onPointerDown={(e) => {
+                    if (!member || i === 0) return;
+                    const timer = setTimeout(() => {
+                      setSelected(member);
+                    }, 500);
+                    const cleanup = () => {
+                      clearTimeout(timer);
+                      e.currentTarget.removeEventListener('pointerup', cleanup);
+                      e.currentTarget.removeEventListener('pointerleave', cleanup);
+                    };
+                    e.currentTarget.addEventListener('pointerup', cleanup);
+                    e.currentTarget.addEventListener('pointerleave', cleanup);
                   }}
                   className={`relative glass-card p-3 flex flex-col items-center gap-1 min-h-[120px] justify-center transition-colors ${
                     member ? 'hover:border-primary/40' : ''
