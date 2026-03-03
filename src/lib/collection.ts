@@ -276,6 +276,8 @@ export function addDistanceToEggs(distanceKm: number): PokemonEgg[] {
   for (const egg of hatched) {
     col.eggs = col.eggs.filter(e => e.id !== egg.id);
     const species = getPokemonById(egg.speciesId)!;
+    const partyCount = col.party.length;
+    const autoAddToParty = partyCount < 6;
     const pokemon: OwnedPokemon = {
       uid: `pkmn_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
       speciesId: egg.speciesId,
@@ -284,8 +286,11 @@ export function addDistanceToEggs(distanceKm: number): PokemonEgg[] {
       level: 1,
       acquiredDate: new Date().toISOString().split('T')[0],
       acquiredMethod: 'egg',
-      isInParty: false,
+      isInParty: autoAddToParty,
     };
+    if (autoAddToParty) {
+      col.party.push(pokemon.uid);
+    }
     col.owned.push(pokemon);
     col.totalHatched++;
   }
