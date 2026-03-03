@@ -14,6 +14,7 @@ import { addCoins } from '@/lib/collection';
 import { grantRewards } from '@/lib/pet';
 import { Button } from '@/components/ui/button';
 import BottomNav from '@/components/BottomNav';
+import { clearPendingEncounter } from '@/lib/npc-encounter';
 
 type BattlePhase = 'select' | 'intro' | 'fighting' | 'result';
 
@@ -21,11 +22,23 @@ export default function BattlePage() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const preselectedNpc = searchParams.get('npc');
+  const isAiNpc = searchParams.get('aiNpc') === 'true';
 
-  const [phase, setPhase] = useState<BattlePhase>(preselectedNpc ? 'intro' : 'select');
-  const [selectedNpc, setSelectedNpc] = useState<NpcTrainer | null>(
-    preselectedNpc ? getNpcById(preselectedNpc) || null : null
-  );
+  // Load AI NPC from sessionStorage if applicable
+  const getInitialNpc = (): NpcTrainer | null => {
+    if (isAiNpc) {
+      const stored = sessionStorage.getItem('routinmon-ai-npc');
+      if (stored) {
+        sessionStorage.removeItem('routinmon-ai-npc');
+        return JSON.parse(stored);
+      }
+    }
+    if (preselectedNpc) return getNpcById(preselectedNpc) || null;
+    return null;
+  };
+
+  const [phase, setPhase] = useState<BattlePhase>(() => (isAiNpc || preselectedNpc) ? 'intro' : 'select');
+  const [selectedNpc, setSelectedNpc] = useState<NpcTrainer | null>(getInitialNpc);
   const [battleResult, setBattleResult] = useState<BattleResult | null>(null);
   const [currentTurnIdx, setCurrentTurnIdx] = useState(0);
   const [playerTeamDisplay, setPlayerTeamDisplay] = useState<BattlePokemon[]>([]);
@@ -36,7 +49,7 @@ export default function BattlePage() {
 
   // Auto-start if NPC preselected
   useEffect(() => {
-    if (preselectedNpc && selectedNpc) {
+    if ((preselectedNpc || isAiNpc) && selectedNpc) {
       startBattle(selectedNpc);
     }
   }, []);
@@ -476,12 +489,20 @@ export default function BattlePage() {
           </motion.div>
 
           <div className="flex gap-3">
-            <Button variant="outline" onClick={() => navigate('/ranking')} className="flex-1">
-              <Trophy size={16} className="mr-1.5" /> 랭킹
-            </Button>
-            <Button onClick={() => { setPhase('select'); setBattleResult(null); }} className="flex-1 gradient-primary text-primary-foreground border-0">
-              다시 배틀
-            </Button>
+            {isAiNpc ? (
+              <Button onClick={() => { clearPendingEncounter(); navigate('/running'); }} className="flex-1 gradient-primary text-primary-foreground border-0">
+                🏃 런닝 계속하기
+              </Button>
+            ) : (
+              <>
+                <Button variant="outline" onClick={() => navigate('/ranking')} className="flex-1">
+                  <Trophy size={16} className="mr-1.5" /> 랭킹
+                </Button>
+                <Button onClick={() => { setPhase('select'); setBattleResult(null); }} className="flex-1 gradient-primary text-primary-foreground border-0">
+                  다시 배틀
+                </Button>
+              </>
+            )}
           </div>
         </div>
         <BottomNav />
