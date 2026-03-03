@@ -8,6 +8,7 @@ import type { PetState, LevelUpResult } from '@/lib/pet';
 import { toast } from 'sonner';
 import { Pause, Play, Check, SkipForward, Home, Apple } from 'lucide-react';
 import PetSprite from '@/components/PetSprite';
+import LevelUpOverlay from '@/components/LevelUpOverlay';
 
 // --- Circular Timer ---
 function CircularTimer({ remaining, total }: { remaining: number; total: number }) {
@@ -75,6 +76,7 @@ export default function RoutineTimer() {
   const [endMood, setEndMood] = useState<string | null>(null);
   const [cheerMessage, setCheerMessage] = useState('');
   const [rewardResult, setRewardResult] = useState<{ food: number; exp: number; levelUp: LevelUpResult | null } | null>(null);
+  const [showLevelUp, setShowLevelUp] = useState(false);
   const cheerTimerRef = useRef(0);
 
   const currentIndexRef = useRef(currentIndex);
@@ -138,16 +140,9 @@ export default function RoutineTimer() {
       saveProfile({ streak: newStreak, lastCompletedDate: today });
     }
 
-    // Level up toast
+    // Show level up overlay
     if (levelUp) {
-      setTimeout(() => {
-        toast(`🎉 ${updatedPet.name}가 Lv.${levelUp.newLevel}가 되었어!`, {
-          description: levelUp.evolved
-            ? `✨ ${getStageInfo(levelUp.newStage!).name}로 진화했어!`
-            : '더 강해진 느낌이야!',
-          duration: 5000,
-        });
-      }, 2000);
+      setTimeout(() => setShowLevelUp(true), 1500);
     }
   };
 
@@ -372,6 +367,15 @@ export default function RoutineTimer() {
             </motion.button>
           </div>
         </motion.div>
+
+        {/* Level Up Overlay */}
+        {rewardResult?.levelUp && showLevelUp && (
+          <LevelUpOverlay
+            result={rewardResult.levelUp}
+            pet={getPet()}
+            onClose={() => setShowLevelUp(false)}
+          />
+        )}
       </div>
     );
   }
