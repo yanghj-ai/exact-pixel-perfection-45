@@ -12,7 +12,7 @@ import {
   type RunningSession,
   type Challenge,
 } from '@/lib/running';
-import { createEgg, triggerEncounter, catchPokemon, markAsSeen, grantExpToParty, type PokemonEgg, type PartyExpResult } from '@/lib/collection';
+import { createEgg, triggerEncounter, catchPokemon, markAsSeen, grantExpToParty, getParty, type PokemonEgg, type PartyExpResult } from '@/lib/collection';
 import { getPokemonById, RARITY_CONFIG } from '@/lib/pokemon-registry';
 import { getPet, getRequiredExp } from '@/lib/pet';
 import type { LevelUpResult } from '@/lib/pet';
@@ -77,6 +77,8 @@ export default function RunningPage() {
   const elapsedRef = useRef(0);
 
   const pet = getPet();
+  const partyLeader = getParty()[0];
+  const leaderSpecies = partyLeader ? getPokemonById(partyLeader.speciesId) : null;
 
   // Timer - keep ref in sync
   useEffect(() => {
@@ -236,7 +238,7 @@ export default function RunningPage() {
     lastNpcCheckDistRef.current = 0;
     resetEncounterDistance();
     startGPS();
-    toast('🏃 런닝 시작!', { description: '파이리와 함께 달려볼까요!' });
+    toast('🏃 런닝 시작!', { description: `${leaderSpecies?.name || '포켓몬'}와 함께 달려볼까요!` });
   };
 
   const handlePause = () => {
@@ -455,9 +457,20 @@ export default function RunningPage() {
         {/* Pet + Cheer during run */}
         {runState !== 'idle' && !showMap && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex flex-col items-center mb-4">
-            <div className="scale-75">
-              <PetSprite stage={pet.stage} hp={pet.hp} maxHp={pet.maxHp} happiness={pet.happiness} streak={0} />
-            </div>
+            {leaderSpecies ? (
+              <motion.img
+                src={leaderSpecies.spriteUrl}
+                alt={leaderSpecies.name}
+                className="w-24 h-24 object-contain"
+                style={{ imageRendering: 'pixelated' }}
+                animate={{ y: [0, -8, 0] }}
+                transition={{ duration: 1.5, repeat: Infinity, ease: 'easeInOut' }}
+              />
+            ) : (
+              <div className="scale-75">
+                <PetSprite stage={pet.stage} hp={pet.hp} maxHp={pet.maxHp} happiness={pet.happiness} streak={0} />
+              </div>
+            )}
             <motion.div key={cheerMessage} initial={{ opacity: 0, y: 5 }} animate={{ opacity: 1, y: 0 }} className="glass-card px-3 py-1.5">
               <p className="text-xs text-foreground">{cheerMessage}</p>
             </motion.div>
@@ -467,11 +480,24 @@ export default function RunningPage() {
         {/* Main stats display */}
         <div className="glass-card p-6 mb-4">
           {runState === 'idle' ? (
-            <div className="text-center py-8">
-              <div className="mb-6">
-                <PetSprite stage={pet.stage} hp={pet.hp} maxHp={pet.maxHp} happiness={pet.happiness} streak={0} />
-              </div>
-              <p className="text-lg font-semibold text-foreground mb-2">파이리와 함께 달려볼까?</p>
+             <div className="text-center py-8">
+              {leaderSpecies ? (
+                <div className="mb-6 flex justify-center">
+                  <motion.img
+                    src={leaderSpecies.spriteUrl}
+                    alt={leaderSpecies.name}
+                    className="w-32 h-32 object-contain"
+                    style={{ imageRendering: 'pixelated' }}
+                    animate={{ y: [0, -6, 0] }}
+                    transition={{ duration: 2, repeat: Infinity, ease: 'easeInOut' }}
+                  />
+                </div>
+              ) : (
+                <div className="mb-6">
+                  <PetSprite stage={pet.stage} hp={pet.hp} maxHp={pet.maxHp} happiness={pet.happiness} streak={0} />
+                </div>
+              )}
+              <p className="text-lg font-semibold text-foreground mb-2">{leaderSpecies?.name || '포켓몬'}와 함께 달려볼까?</p>
               <p className="text-sm text-muted-foreground">GPS로 런닝을 기록하고 보상을 받으세요</p>
               {gpsError && <p className="text-xs text-destructive mt-2">{gpsError}</p>}
             </div>
