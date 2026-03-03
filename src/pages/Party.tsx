@@ -8,13 +8,14 @@ import {
 } from '@/lib/collection';
 import { getPet } from '@/lib/pet';
 import { getPokemonById, RARITY_CONFIG } from '@/lib/pokemon-registry';
-import { ArrowLeft, Heart, Apple, Edit3, ArrowRightLeft, X, Check, Sparkles, Crown, ArrowUp, ArrowDown } from 'lucide-react';
+import { ArrowLeft, Heart, Apple, Edit3, ArrowRightLeft, X, Check, Sparkles, Crown, ArrowUp, ArrowDown, Package } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
 } from '@/components/ui/dialog';
+import { getInventory, SHOP_ITEMS, useRareCandy, useEvolutionStone } from '@/lib/shop';
 import BottomNav from '@/components/BottomNav';
 import DebugPanel from '@/components/DebugPanel';
 
@@ -449,6 +450,61 @@ export default function Party() {
                       {partyIndex === 0 && (
                         <p className="text-[9px] text-primary text-center">⭐ 현재 리더 포켓몬입니다</p>
                       )}
+                    </div>
+                  );
+                })()}
+
+                {/* Item Use Section */}
+                {(() => {
+                  const inv = getInventory();
+                  const usableItems = Object.entries(inv.items)
+                    .filter(([, count]) => count > 0)
+                    .map(([itemId, count]) => ({ item: SHOP_ITEMS.find(i => i.id === itemId)!, count }))
+                    .filter(({ item }) => item && (item.category === 'evolution' || item.category === 'boost'));
+
+                  if (usableItems.length === 0) return null;
+
+                  return (
+                    <div className="space-y-2">
+                      <p className="text-[10px] text-muted-foreground font-medium flex items-center gap-1">
+                        <Package size={10} /> 아이템 사용
+                      </p>
+                      <div className="grid grid-cols-2 gap-1.5">
+                        {usableItems.map(({ item, count }) => (
+                          <Button
+                            key={item.id}
+                            variant="outline"
+                            size="sm"
+                            onClick={() => {
+                              let result;
+                              if (item.effect === 'level_up' || item.effect === 'level_up_5') {
+                                result = useRareCandy(selected.uid, item.effect === 'level_up_5' ? 5 : 1);
+                              } else if (item.effect.startsWith('evolve_')) {
+                                result = useEvolutionStone(selected.uid, item.id);
+                              } else {
+                                return;
+                              }
+
+                              if (result.success) {
+                                toast.success(result.message);
+                                // Refresh selected pokemon data
+                                const updated = getCollection().owned.find(p => p.uid === selected.uid);
+                                if (updated) setSelected(updated);
+                                refresh();
+                              } else {
+                                toast.error(result.message);
+                              }
+                            }}
+                            className="flex items-center gap-1.5 h-auto py-2 px-2 text-[10px] justify-start"
+                          >
+                            <span>{item.emoji}</span>
+                            <div className="text-left flex-1 min-w-0">
+                              <p className="font-semibold truncate">{item.name}</p>
+                              <p className="text-muted-foreground">×{count}</p>
+                            </div>
+                          </Button>
+                        ))}
+                      </div>
                     </div>
                   );
                 })()}

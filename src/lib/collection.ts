@@ -211,6 +211,17 @@ export function feedPokemon(uid: string, foodCount: number): { pokemon: OwnedPok
 
   pokemon.friendship = Math.min(255, pokemon.friendship + 5);
   saveCollection(col);
+
+  // Also consume food from pet state (direct localStorage to avoid circular import)
+  const petData = localStorage.getItem('routinmon-pet');
+  if (petData) {
+    const pet = JSON.parse(petData);
+    if (pet.foodCount > 0) {
+      pet.foodCount = pet.foodCount - 1;
+      localStorage.setItem('routinmon-pet', JSON.stringify(pet));
+    }
+  }
+
   return { pokemon, foodUsed: 1 };
 }
 

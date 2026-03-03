@@ -26,7 +26,8 @@ export default function Home() {
   const [pet, setPet] = useState<PetState>(getPet());
   const [dialogue, setDialogue] = useState('');
   const [runStats, setRunStats] = useState<RunningStats>(getRunningStats());
-  
+  const [, forceUpdate] = useState(0);
+  const refresh = () => forceUpdate(v => v + 1);
 
   const collectionStats = getCollectionStats();
   const party = getParty();
@@ -140,23 +141,39 @@ export default function Home() {
 
           {/* Pet Sprite Arena */}
           <div className="relative h-48 flex items-center justify-center">
-            <PetSprite
-              stage={pet.stage as PokemonStage}
-              hp={pet.hp}
-              maxHp={pet.maxHp}
-              happiness={pet.happiness}
-              streak={runStats.currentStreak}
-              size="normal"
-              onTap={() => {
-                if (leadPokemon) {
-                  const result = interactWithPokemon(leadPokemon.uid);
-                  toast(result.message);
-                } else {
-                  setDialogue(getRandomDialogue('interact'));
-                }
-              }}
-              onLongPress={handleFeed}
-            />
+            {leadSpecies ? (
+              <motion.div
+                className="cursor-pointer"
+                animate={{ y: [0, -6, 0] }}
+                transition={{ duration: 2.5, repeat: Infinity, ease: 'easeInOut' }}
+                onClick={() => {
+                  if (leadPokemon) {
+                    const result = interactWithPokemon(leadPokemon.uid);
+                    toast(result.message);
+                  } else {
+                    setDialogue(getRandomDialogue('interact'));
+                  }
+                }}
+              >
+                <img
+                  src={leadSpecies.spriteUrl}
+                  alt={leadSpecies.name}
+                  className="w-32 h-32 object-contain"
+                  style={{ imageRendering: 'pixelated', filter: 'drop-shadow(0 4px 16px hsl(18 100% 60% / 0.4))' }}
+                />
+              </motion.div>
+            ) : (
+              <PetSprite
+                stage={pet.stage as PokemonStage}
+                hp={pet.hp}
+                maxHp={pet.maxHp}
+                happiness={pet.happiness}
+                streak={runStats.currentStreak}
+                size="normal"
+                onTap={() => setDialogue(getRandomDialogue('interact'))}
+                onLongPress={handleFeed}
+              />
+            )}
           </div>
 
           {/* HP & EXP bars */}
@@ -378,13 +395,15 @@ export default function Home() {
             <button
               onClick={() => {
                 const cost = getInjuredCount() * 10;
-                if (collectionStats.coins < cost) {
+                const currentStats = getCollectionStats();
+                if (currentStats.coins < cost) {
                   toast.error('코인이 부족합니다!', { description: `필요: ${cost} 코인` });
                   return;
                 }
                 addCoins(-cost);
                 const result = healAllAtCenter();
                 toast.success(`🏥 ${result.healed}마리 포켓몬 회복 완료!`, { description: `${cost} 코인 사용` });
+                refresh(); // force re-render to update UI
               }}
               className="w-full rounded-xl bg-heal/10 border border-heal/30 py-2 text-xs font-medium text-heal hover:bg-heal/20 transition-colors"
             >
