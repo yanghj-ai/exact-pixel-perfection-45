@@ -28,9 +28,11 @@ interface DebugPanelProps {
   pageActions?: DebugAction[];
   /** Callback after any debug action to refresh parent state */
   onRefresh?: () => void;
+  /** Callback when eggs hatch from debug actions */
+  onEggHatch?: (hatchedEggs: any[]) => void;
 }
 
-export default function DebugPanel({ pageInfo, pageActions, onRefresh }: DebugPanelProps) {
+export default function DebugPanel({ pageInfo, pageActions, onRefresh, onEggHatch }: DebugPanelProps) {
   const [open, setOpen] = useState(false);
 
   const pet = getPet();
@@ -93,10 +95,10 @@ export default function DebugPanel({ pageInfo, pageActions, onRefresh }: DebugPa
       catchPokemon(id);
       notify(`⚡ #${id} 포획!`);
     }, '랜덤포획') },
-    { label: '+1km 런닝', emoji: '🏃', color: 'heal', onClick: () => safeAction(() => { const r = debugAddDistance(1); notify(`🏃 1km 런닝 추가!${r.hatchedEggs.length > 0 ? ` 🥚 ${r.hatchedEggs.length}개 부화!` : ''}`); }, '1km런닝') },
-    { label: '+3km 런닝', emoji: '🏃', color: 'heal', onClick: () => safeAction(() => { const r = debugAddDistance(3); notify(`🏃 3km 런닝 추가!${r.hatchedEggs.length > 0 ? ` 🥚 ${r.hatchedEggs.length}개 부화!` : ''}`); }, '3km런닝') },
-    { label: '+5km 런닝', emoji: '🏃', color: 'heal', onClick: () => safeAction(() => { const r = debugAddDistance(5); notify(`🏃 5km 런닝 추가!${r.hatchedEggs.length > 0 ? ` 🥚 ${r.hatchedEggs.length}개 부화!` : ''}`); }, '5km런닝') },
-    { label: '+10km 런닝', emoji: '🏃', color: 'heal', onClick: () => safeAction(() => { const r = debugAddDistance(10); notify(`🏃 10km 런닝 추가!${r.hatchedEggs.length > 0 ? ` 🥚 ${r.hatchedEggs.length}개 부화!` : ''}`); }, '10km런닝') },
+    { label: '+1km 런닝', emoji: '🏃', color: 'heal', onClick: () => safeAction(() => { const r = debugAddDistance(1); notify(`🏃 1km 런닝 추가!${r.hatchedEggs.length > 0 ? ` 🥚 ${r.hatchedEggs.length}개 부화!` : ''}`); if (r.hatchedEggs.length > 0) onEggHatch?.(r.hatchedEggs); }, '1km런닝') },
+    { label: '+3km 런닝', emoji: '🏃', color: 'heal', onClick: () => safeAction(() => { const r = debugAddDistance(3); notify(`🏃 3km 런닝 추가!${r.hatchedEggs.length > 0 ? ` 🥚 ${r.hatchedEggs.length}개 부화!` : ''}`); if (r.hatchedEggs.length > 0) onEggHatch?.(r.hatchedEggs); }, '3km런닝') },
+    { label: '+5km 런닝', emoji: '🏃', color: 'heal', onClick: () => safeAction(() => { const r = debugAddDistance(5); notify(`🏃 5km 런닝 추가!${r.hatchedEggs.length > 0 ? ` 🥚 ${r.hatchedEggs.length}개 부화!` : ''}`); if (r.hatchedEggs.length > 0) onEggHatch?.(r.hatchedEggs); }, '5km런닝') },
+    { label: '+10km 런닝', emoji: '🏃', color: 'heal', onClick: () => safeAction(() => { const r = debugAddDistance(10); notify(`🏃 10km 런닝 추가!${r.hatchedEggs.length > 0 ? ` 🥚 ${r.hatchedEggs.length}개 부화!` : ''}`); if (r.hatchedEggs.length > 0) onEggHatch?.(r.hatchedEggs); }, '10km런닝') },
   ];
 
   // ── Common info ──
