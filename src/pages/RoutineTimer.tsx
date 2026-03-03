@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { type RoutineItem } from '@/lib/routines';
@@ -15,7 +15,7 @@ function CircularTimer({ remaining, total }: CircularTimerProps) {
   const stroke = 8;
   const normalizedRadius = radius - stroke / 2;
   const circumference = normalizedRadius * 2 * Math.PI;
-  const progress = remaining / total;
+  const progress = total > 0 ? remaining / total : 0;
   const strokeDashoffset = circumference * (1 - progress);
 
   const minutes = Math.floor(remaining / 60);
@@ -24,7 +24,6 @@ function CircularTimer({ remaining, total }: CircularTimerProps) {
   return (
     <div className="relative flex items-center justify-center">
       <svg height={radius * 2} width={radius * 2} className="-rotate-90">
-        {/* Background circle */}
         <circle
           stroke="hsl(var(--muted))"
           fill="transparent"
@@ -33,7 +32,6 @@ function CircularTimer({ remaining, total }: CircularTimerProps) {
           cx={radius}
           cy={radius}
         />
-        {/* Progress circle */}
         <circle
           stroke="url(#timer-gradient)"
           fill="transparent"
@@ -74,13 +72,19 @@ export default function RoutineTimer() {
   const location = useLocation();
   const navigate = useNavigate();
   const routines: RoutineItem[] = location.state?.routines || [];
-  
+
   const [currentIndex, setCurrentIndex] = useState(0);
   const [remaining, setRemaining] = useState(0);
   const [isPaused, setIsPaused] = useState(false);
   const [completed, setCompleted] = useState<boolean[]>([]);
   const [allDone, setAllDone] = useState(false);
   const [endMood, setEndMood] = useState<string | null>(null);
+
+  // Refs to avoid stale closures in timer
+  const currentIndexRef = useRef(currentIndex);
+  const completedRef = useRef(completed);
+  currentIndexRef.current = currentIndex;
+  completedRef.current = completed;
 
   const currentRoutine = routines[currentIndex];
   const totalSeconds = currentRoutine ? currentRoutine.duration * 60 : 0;
@@ -95,53 +99,8 @@ export default function RoutineTimer() {
     setCompleted(new Array(routines.length).fill(false));
   }, []);
 
-  // Timer countdown
-  useEffect(() => {
-    if (isPaused || allDone || remaining <= 0) return;
-    const interval = setInterval(() => {
-      setRemaining((prev) => {
-        if (prev <= 1) {
-          handleComplete();
-          return 0;
-        }
-        return prev - 1;
-      });
-    }, 1000);
-    return () => clearInterval(interval);
-  }, [isPaused, allDone, remaining]);
-
-  const handleComplete = useCallback(() => {
-    const newCompleted = [...completed];
-    newCompleted[currentIndex] = true;
-    setCompleted(newCompleted);
-
-    if (currentIndex < routines.length - 1) {
-      const nextIndex = currentIndex + 1;
-      setCurrentIndex(nextIndex);
-      setRemaining(routines[nextIndex].duration * 60);
-    } else {
-      // All done!
-      finishRoutine(newCompleted);
-    }
-  }, [currentIndex, completed, routines]);
-
-  const handleSkip = () => {
-    const newCompleted = [...completed];
-    newCompleted[currentIndex] = false;
-    setCompleted(newCompleted);
-
-    if (currentIndex < routines.length - 1) {
-      const nextIndex = currentIndex + 1;
-      setCurrentIndex(nextIndex);
-      setRemaining(routines[nextIndex].duration * 60);
-    } else {
-      finishRoutine(newCompleted);
-    }
-  };
-
-  const finishRoutine = (finalCompleted: boolean[]) => {
+  const finishRoutine = () => {
     setAllDone(true);
-    // Update streak
     const profile = getProfile();
     const today = new Date().toISOString().split('T')[0];
     if (profile.lastCompletedDate !== today) {
@@ -153,11 +112,43 @@ export default function RoutineTimer() {
     }
   };
 
+  const advanceToNext = (wasCompleted: boolean) => {
+    const idx = currentIndexRef.current;
+    const newCompleted = [...completedRef.current];
+    newCompleted[idx] = wasCompleted;
+    setCompleted(newCompleted);
+
+    if (idx < routines.length - 1) {
+      const nextIndex = idx + 1;
+      setCurrentIndex(nextIndex);
+      setRemaining(routines[nextIndex].duration * 60);
+    } else {
+      completedRef.current = newCompleted;
+      finishRoutine();
+    }
+  };
+
+  // Timer countdown
+  useEffect(() => {
+    if (isPaused || allDone || remaining <= 0) return;
+    const interval = setInterval(() => {
+      setRemaining((prev) => {
+        if (prev <= 1) {
+          // Schedule advance outside setState
+          setTimeout(() => advanceToNext(true), 0);
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [isPaused, allDone, remaining]);
+
   if (routines.length === 0) return null;
 
   // Celebration screen
   if (allDone) {
-    const completedCount = completed.filter(Boolean).length;
+    const completedCount = completedRef.current.filter(Boolean).length;
     const profile = getProfile();
 
     return (
@@ -210,14 +201,14 @@ export default function RoutineTimer() {
               {routines.map((routine, i) => (
                 <div key={routine.id} className="flex items-center gap-3">
                   <div className={`flex h-6 w-6 items-center justify-center rounded-full text-xs ${
-                    completed[i]
+                    completedRef.current[i]
                       ? 'gradient-primary text-primary-foreground'
                       : 'bg-muted text-muted-foreground'
                   }`}>
-                    {completed[i] ? '✓' : '—'}
+                    {completedRef.current[i] ? '✓' : '—'}
                   </div>
                   <span className="text-xl">{routine.emoji}</span>
-                  <span className={`text-sm ${completed[i] ? 'text-foreground' : 'text-muted-foreground line-through'}`}>
+                  <span className={`text-sm ${completedRef.current[i] ? 'text-foreground' : 'text-muted-foreground line-through'}`}>
                     {routine.title}
                   </span>
                 </div>
@@ -318,7 +309,7 @@ export default function RoutineTimer() {
           {/* Skip */}
           <motion.button
             whileTap={{ scale: 0.9 }}
-            onClick={handleSkip}
+            onClick={() => advanceToNext(false)}
             className="flex flex-col items-center gap-1"
           >
             <div className="flex h-14 w-14 items-center justify-center rounded-full border border-border bg-card">
@@ -348,7 +339,7 @@ export default function RoutineTimer() {
           {/* Complete */}
           <motion.button
             whileTap={{ scale: 0.9 }}
-            onClick={handleComplete}
+            onClick={() => advanceToNext(true)}
             className="flex flex-col items-center gap-1"
           >
             <div className="flex h-14 w-14 items-center justify-center rounded-full border-2 border-primary bg-primary/10">
@@ -358,7 +349,7 @@ export default function RoutineTimer() {
           </motion.button>
         </div>
 
-        {/* Skip encouragement */}
+        {/* Pause encouragement */}
         <AnimatePresence>
           {isPaused && (
             <motion.p
