@@ -1,1 +1,4 @@
 project_id = "tamdpkjuoqcmkeuzigaw"
+
+[functions.generate-spritesheet]
+verify_jwt = false

@@ -189,6 +189,8 @@ export default function PetSprite({ stage, hp, maxHp, happiness = 3, streak = 1,
   const mood = getMood(hp, maxHp, happiness, streak);
   const profile = MOOD_PROFILES[mood];
   const displaySize = size === 'small' ? 60 : DISPLAY_SIZES[stage];
+  const frameCount = FRAME_COUNT;
+  const sheetSrc = SHEETS[stage];
 
   // Wandering state
   const [posX, setPosX] = useState(0);
@@ -206,7 +208,7 @@ export default function PetSprite({ stage, hp, maxHp, happiness = 3, streak = 1,
       ? profile.frameSpeed * 2
       : profile.frameSpeed;
     const interval = setInterval(() => {
-      setFrame((prev) => (prev + 1) % FRAME_COUNT);
+      setFrame((prev) => (prev + 1) % frameCount);
     }, speed);
     return () => clearInterval(interval);
   }, [profile.frameSpeed, currentBehavior]);
@@ -245,7 +247,7 @@ export default function PetSprite({ stage, hp, maxHp, happiness = 3, streak = 1,
     };
   }, [mood, size]);
 
-  const frameOffset = useMemo(() => `${-(frame * 100 / FRAME_COUNT)}%`, [frame]);
+  const frameOffset = useMemo(() => `${-(frame * 100 / frameCount)}%`, [frame, frameCount]);
 
   // Behavior-specific motion values
   const getBehaviorAnimation = () => {
@@ -364,23 +366,24 @@ export default function PetSprite({ stage, hp, maxHp, happiness = 3, streak = 1,
         >
           {/* Spritesheet */}
           <div
-            className="w-full h-full overflow-hidden"
+            className="w-full h-full overflow-hidden rounded-2xl"
             style={{
               filter: profile.filter,
               transform: facingLeft ? 'scaleX(-1)' : 'scaleX(1)',
               transition: 'transform 0.2s ease',
+              background: 'transparent',
             }}
           >
             <div
               style={{
-                width: `${FRAME_COUNT * 100}%`,
+                width: `${frameCount * 100}%`,
                 height: '100%',
                 transform: `translateX(${frameOffset})`,
                 transition: 'none',
               }}
             >
               <img
-                src={SHEETS[stage]}
+                src={sheetSrc}
                 alt={stage}
                 className="w-full h-full object-cover"
                 style={{ imageRendering: 'auto' }}
