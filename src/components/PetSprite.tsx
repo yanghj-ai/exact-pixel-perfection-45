@@ -2,27 +2,18 @@ import { useEffect, useState, useMemo, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import type { PokemonStage } from '@/lib/pet';
 
-// Individual frame imports
-import charmanderF1 from '@/assets/charmander-frame1.png';
-import charmanderF2 from '@/assets/charmander-frame2.png';
-import charmanderF3 from '@/assets/charmander-frame3.png';
-import charmanderF4 from '@/assets/charmander-frame4.png';
-import charmeleonF1 from '@/assets/charmeleon-frame1.png';
-import charmeleonF2 from '@/assets/charmeleon-frame2.png';
-import charmeleonF3 from '@/assets/charmeleon-frame3.png';
-import charmeleonF4 from '@/assets/charmeleon-frame4.png';
-import charizardF1 from '@/assets/charizard-frame1.png';
-import charizardF2 from '@/assets/charizard-frame2.png';
-import charizardF3 from '@/assets/charizard-frame3.png';
-import charizardF4 from '@/assets/charizard-frame4.png';
+// Animated GIF imports
+import charmanderGif from '@/assets/charmander-anim.gif';
+import charmeleonGif from '@/assets/charmeleon-anim.gif';
+import charizardGif from '@/assets/charizard-anim.gif';
 
-const FRAMES: Record<PokemonStage, string[]> = {
-  charmander: [charmanderF1, charmanderF2, charmanderF3, charmanderF4],
-  charmeleon: [charmeleonF1, charmeleonF2, charmeleonF3, charmeleonF4],
-  charizard: [charizardF1, charizardF2, charizardF3, charizardF4],
+const STAGE_GIFS: Record<PokemonStage, string> = {
+  charmander: charmanderGif,
+  charmeleon: charmeleonGif,
+  charizard: charizardGif,
 };
 
-const FRAME_COUNT = 4;
+const FRAME_COUNT = 1; // GIFs handle their own animation
 
 type PetMood = 'ecstatic' | 'happy' | 'normal' | 'tired' | 'hungry' | 'critical' | 'lonely';
 
@@ -204,7 +195,7 @@ export default function PetSprite({ stage, hp, maxHp, happiness = 3, streak = 1,
   const mood = getMood(hp, maxHp, happiness, streak);
   const profile = MOOD_PROFILES[mood];
   const displaySize = size === 'small' ? 60 : DISPLAY_SIZES[stage];
-  const currentFrameSrc = FRAMES[stage][frame];
+  const currentFrameSrc = STAGE_GIFS[stage];
 
   // Wandering state
   const [posX, setPosX] = useState(0);
@@ -287,18 +278,7 @@ export default function PetSprite({ stage, hp, maxHp, happiness = 3, streak = 1,
     }
   };
 
-  // Sprite frame animation
-  useEffect(() => {
-    const speed = currentBehavior === 'walk' || currentBehavior === 'spin'
-      ? profile.frameSpeed * 0.7
-      : currentBehavior === 'sleep'
-      ? profile.frameSpeed * 2
-      : profile.frameSpeed;
-    const interval = setInterval(() => {
-      setFrame((prev) => (prev + 1) % FRAME_COUNT);
-    }, speed);
-    return () => clearInterval(interval);
-  }, [profile.frameSpeed, currentBehavior]);
+  // GIFs handle their own frame animation - no manual frame cycling needed
 
   // Behavior AI loop
   useEffect(() => {
