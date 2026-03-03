@@ -1,11 +1,12 @@
-import { Home, Play, Trophy, Settings } from 'lucide-react';
+import { Home, Play, Swords, Trophy, Settings } from 'lucide-react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 
 const tabs = [
   { path: '/home', icon: Home, label: '홈' },
   { path: '/run', icon: Play, label: '런닝' },
-  { path: '/history', icon: Trophy, label: '기록' },
+  { path: '/battle', icon: Swords, label: '배틀' },
+  { path: '/ranking', icon: Trophy, label: '랭킹' },
   { path: '/settings', icon: Settings, label: '설정' },
 ];
 
