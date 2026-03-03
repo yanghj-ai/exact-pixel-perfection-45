@@ -136,7 +136,7 @@ const TYPE_MOVES: Record<PokemonType, BattleMove[]> = {
   ],
   rock: [
     { name: '스톤에지', type: 'rock', power: 100, emoji: '🪨' },
-    { name: '돌떨구기', type: 'rock', power: 60, emoji: '�ite' },
+    { name: '돌떨구기', type: 'rock', power: 60, emoji: '🪨' },
   ],
   ghost: [
     { name: '섀도볼', type: 'ghost', power: 80, emoji: '👻' },

@@ -490,7 +490,7 @@ export default function BattlePage() {
 
           <div className="flex gap-3">
             {isAiNpc ? (
-              <Button onClick={() => { clearPendingEncounter(); navigate('/running'); }} className="flex-1 gradient-primary text-primary-foreground border-0">
+              <Button onClick={() => { clearPendingEncounter(); navigate('/run'); }} className="flex-1 gradient-primary text-primary-foreground border-0">
                 🏃 런닝 계속하기
               </Button>
             ) : (
