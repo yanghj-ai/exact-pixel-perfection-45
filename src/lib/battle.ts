@@ -268,8 +268,6 @@ export function executeTurn(state: TurnBasedBattleState, playerMove: BattleMove)
     }
   }
 
-  state.turnCount++;
-
   // Second attacker
   if (canAct(second) && second.currentHp > 0) {
     const log2 = doAttack(second, first, state.turnCount, !firstIsPlayer, secondMove);
