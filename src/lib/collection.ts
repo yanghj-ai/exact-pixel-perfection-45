@@ -70,7 +70,6 @@ export function hasStarter(): boolean {
 
 export function chooseStarter(speciesId: number): OwnedPokemon {
   const col = getCollection();
-  const species = getPokemonById(speciesId)!;
   const pokemon: OwnedPokemon = {
     uid: `pkmn_${Date.now()}`,
     speciesId,
@@ -85,6 +84,31 @@ export function chooseStarter(speciesId: number): OwnedPokemon {
   col.party.push(pokemon.uid);
   saveCollection(col);
   return pokemon;
+}
+
+/** Ensure starter exists and is the currently selected one */
+export function upsertStarter(speciesId: number): OwnedPokemon {
+  const col = getCollection();
+  const existingStarter = col.owned.find(p => p.acquiredMethod === 'starter');
+
+  if (!existingStarter) {
+    return chooseStarter(speciesId);
+  }
+
+  existingStarter.speciesId = speciesId;
+  existingStarter.level = 5;
+  existingStarter.friendship = 70;
+  existingStarter.nickname = null;
+  existingStarter.isInParty = true;
+
+  // Move starter to party leader position
+  if (!col.party.includes(existingStarter.uid)) {
+    col.party.unshift(existingStarter.uid);
+  }
+  col.party = [existingStarter.uid, ...col.party.filter(uid => uid !== existingStarter.uid)].slice(0, 6);
+
+  saveCollection(col);
+  return existingStarter;
 }
 
 // ─── Party Management ────────────────────────────────────
@@ -367,35 +391,48 @@ export function resetCollection() {
 }
 
 // ─── Pet ↔ Collection Sync ──────────────────────────────
-// The "pet" system tracks the main starter's level/stage,
-// but the collection keeps its own level/speciesId.
-// This function syncs them so battles use the correct data.
+// Pet level is the source of truth for starter level.
+// Starter evolution family is determined by selected starter species.
 
-/** Map pet stage to species id */
-function stageToSpeciesId(stage: string): number {
-  switch (stage) {
-    case 'charmeleon': return 5;
-    case 'charizard': return 6;
-    default: return 4; // charmander
-  }
+const STARTER_CHAINS: number[][] = [
+  [1, 2, 3], // Bulbasaur line
+  [4, 5, 6], // Charmander line
+  [7, 8, 9], // Squirtle line
+];
+
+const STARTER_NAME_TO_BASE: Record<string, number> = {
+  '이상해씨': 1,
+  '이상해풀': 1,
+  '이상해꽃': 1,
+  '파이리': 4,
+  '리자드': 4,
+  '리자몽': 4,
+  '꼬부기': 7,
+  '어니부기': 7,
+  '거북왕': 7,
+};
+
+function resolveStarterSpecies(currentSpeciesId: number, level: number, petName?: string): number {
+  const baseByName = petName ? STARTER_NAME_TO_BASE[petName] : undefined;
+  const chain = STARTER_CHAINS.find(c => c.includes(baseByName ?? currentSpeciesId)) ?? [4, 5, 6];
+
+  if (level >= 36) return chain[2];
+  if (level >= 16) return chain[1];
+  return chain[0];
 }
 
 /**
- * Sync pet level & evolution to the starter pokemon in the collection.
- * Called after every grantRewards / level-up.
+ * Sync starter level/evolution from pet level.
+ * Returns synced starter speciesId (or null when starter does not exist).
  */
-export function syncStarterWithPet(level: number, stage: string) {
+export function syncStarterWithPet(level: number, _stage: string, petName?: string): number | null {
   const col = getCollection();
   const starter = col.owned.find(p => p.acquiredMethod === 'starter');
-  if (!starter) return;
+  if (!starter) return null;
 
-  const newSpeciesId = stageToSpeciesId(stage);
   starter.level = level;
-
-  // If evolved, update species id and mark new species as owned
-  if (starter.speciesId !== newSpeciesId) {
-    starter.speciesId = newSpeciesId;
-  }
-
+  starter.speciesId = resolveStarterSpecies(starter.speciesId, level, petName);
   saveCollection(col);
+
+  return starter.speciesId;
 }

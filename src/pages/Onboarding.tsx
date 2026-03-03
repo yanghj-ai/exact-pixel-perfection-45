@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { saveProfile } from '@/lib/storage';
 import { savePet } from '@/lib/pet';
-import { chooseStarter, hasStarter, markAsSeen } from '@/lib/collection';
+import { upsertStarter, markAsSeen } from '@/lib/collection';
 import { ChevronRight, Clock } from 'lucide-react';
 
 const SPRITE_BASE = 'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/versions/generation-v/black-white/animated';
@@ -112,9 +112,7 @@ export default function Onboarding() {
       saveProfile({ name, offWorkTime, onboardingComplete: true });
       const starter = STARTERS.find(s => s.id === selectedStarter)!;
       savePet({ name: starter.name });
-      if (!hasStarter()) {
-        chooseStarter(selectedStarter);
-      }
+      upsertStarter(selectedStarter);
       setPhase('starter-reveal');
     }, 2000);
   };

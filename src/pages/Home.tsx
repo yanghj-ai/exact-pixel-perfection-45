@@ -43,7 +43,7 @@ export default function Home() {
       return;
     }
     // ★ Sync starter data on every Home visit (fixes stale data)
-    syncStarterWithPet(pet.level, pet.stage);
+    syncStarterWithPet(pet.level, pet.stage, pet.name);
 
     const updated = applyHpDecay(pet);
     setPet(updated);
