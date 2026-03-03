@@ -25,6 +25,8 @@ export default function Settings() {
     if (confirm('모든 데이터를 초기화하시겠어요? 파이리와의 추억이 사라집니다 😢')) {
       localStorage.removeItem('routinmon-profile');
       localStorage.removeItem('routinmon-pet');
+      localStorage.removeItem('routinmon-running');
+      localStorage.removeItem('routinmon-collection');
       navigate('/');
     }
   };
