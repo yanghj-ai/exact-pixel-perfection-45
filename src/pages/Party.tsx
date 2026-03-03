@@ -368,27 +368,15 @@ export default function Party() {
                     <Sparkles size={16} className="text-primary" />
                     교감
                   </Button>
-                  {selected.isInParty && party[0]?.uid === selected.uid ? (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setShowItemMenu(true)}
-                      className="flex flex-col items-center gap-1 h-auto py-3 text-xs"
-                    >
-                      <Package size={16} className="text-heal" />
-                      아이템
-                    </Button>
-                  ) : (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => handleFeed(selected.uid)}
-                      className="flex flex-col items-center gap-1 h-auto py-3 text-xs"
-                    >
-                      <Apple size={16} className="text-heal" />
-                      먹이 ({pet.foodCount})
-                    </Button>
-                  )}
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setShowItemMenu(true)}
+                    className="flex flex-col items-center gap-1 h-auto py-3 text-xs"
+                  >
+                    <Package size={16} className="text-heal" />
+                    아이템
+                  </Button>
                   <Button
                     variant="outline"
                     size="sm"
