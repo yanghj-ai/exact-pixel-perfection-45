@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Bug, Zap, Coins, Apple, Heart, RotateCcw, Database, ChevronDown } from 'lucide-react';
 import { toast } from 'sonner';
 import { getPet, savePet, grantRewards, getRequiredExp } from '@/lib/pet';
-import { getCollection, addCoins, getCollectionStats, createEgg, catchPokemon } from '@/lib/collection';
+import { getCollection, addCoins, getCollectionStats, createEgg, catchPokemon, grantExpToParty } from '@/lib/collection';
 import { getRunningStats } from '@/lib/running';
 import { debugAddDistance } from '@/lib/running';
 import { getBattleRecords, getWeeklyBattleStats } from '@/lib/battle';
@@ -99,6 +99,7 @@ export default function DebugPanel({ pageInfo, pageActions, onRefresh, onEggHatc
     { label: '+3km 런닝', emoji: '🏃', color: 'heal', onClick: () => safeAction(() => { const r = debugAddDistance(3); notify(`🏃 3km 런닝 추가!${r.hatchedEggs.length > 0 ? ` 🥚 ${r.hatchedEggs.length}개 부화!` : ''}`); if (r.hatchedEggs.length > 0) onEggHatch?.(r.hatchedEggs); }, '3km런닝') },
     { label: '+5km 런닝', emoji: '🏃', color: 'heal', onClick: () => safeAction(() => { const r = debugAddDistance(5); notify(`🏃 5km 런닝 추가!${r.hatchedEggs.length > 0 ? ` 🥚 ${r.hatchedEggs.length}개 부화!` : ''}`); if (r.hatchedEggs.length > 0) onEggHatch?.(r.hatchedEggs); }, '5km런닝') },
     { label: '+10km 런닝', emoji: '🏃', color: 'heal', onClick: () => safeAction(() => { const r = debugAddDistance(10); notify(`🏃 10km 런닝 추가!${r.hatchedEggs.length > 0 ? ` 🥚 ${r.hatchedEggs.length}개 부화!` : ''}`); if (r.hatchedEggs.length > 0) onEggHatch?.(r.hatchedEggs); }, '10km런닝') },
+    { label: '파티 EXP +3000', emoji: '⚡', color: 'accent', onClick: () => safeAction(() => { const results = grantExpToParty(3000); const evolved = results.filter(r => r.evolved); notify(`⚡ 파티 EXP +3000!${evolved.length > 0 ? ` 🎉 ${evolved.map(e => e.name).join(', ')} 진화!` : ''}`); }, '파티EXP') },
   ];
 
   // ── Common info ──
