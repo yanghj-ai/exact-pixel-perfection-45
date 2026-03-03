@@ -294,6 +294,85 @@ export function addDistanceToEggs(distanceKm: number): PokemonEgg[] {
   return hatched;
 }
 
+// ─── Party EXP System ────────────────────────────────────
+
+export interface PartyExpResult {
+  uid: string;
+  speciesId: number;
+  name: string;
+  expGained: number;
+  levelBefore: number;
+  levelAfter: number;
+  evolved: boolean;
+  evolvedTo?: number;
+}
+
+/** Grant EXP to all party Pokémon (from running, battles, etc.) */
+export function grantExpToParty(totalExp: number): PartyExpResult[] {
+  const col = getCollection();
+  const partyMembers = col.party
+    .map(uid => col.owned.find(p => p.uid === uid))
+    .filter(Boolean) as OwnedPokemon[];
+
+  if (partyMembers.length === 0) return [];
+
+  const expPerMember = Math.max(1, Math.floor(totalExp / partyMembers.length));
+  const results: PartyExpResult[] = [];
+
+  for (const pokemon of partyMembers) {
+    const species = getPokemonById(pokemon.speciesId);
+    if (!species) continue;
+
+    const levelBefore = pokemon.level;
+    // Simple EXP formula: need (level * 25) EXP per level
+    let remainingExp = expPerMember;
+    let currentLevel = pokemon.level;
+
+    while (remainingExp > 0) {
+      const neededForLevel = currentLevel * 25;
+      if (remainingExp >= neededForLevel) {
+        remainingExp -= neededForLevel;
+        currentLevel++;
+        if (currentLevel > 100) { currentLevel = 100; break; }
+      } else {
+        break;
+      }
+    }
+
+    pokemon.level = currentLevel;
+
+    // Check evolution
+    let evolved = false;
+    let evolvedTo: number | undefined;
+    if (species.evolveTo.length > 0 && species.evolveLevel && currentLevel >= species.evolveLevel) {
+      // Evolve to first evolution target
+      const nextSpeciesId = species.evolveTo[0];
+      pokemon.speciesId = nextSpeciesId;
+      evolved = true;
+      evolvedTo = nextSpeciesId;
+    }
+
+    // Boost friendship slightly on level up
+    if (currentLevel > levelBefore) {
+      pokemon.friendship = Math.min(255, pokemon.friendship + (currentLevel - levelBefore) * 2);
+    }
+
+    results.push({
+      uid: pokemon.uid,
+      speciesId: pokemon.speciesId,
+      name: species.name,
+      expGained: expPerMember,
+      levelBefore,
+      levelAfter: currentLevel,
+      evolved,
+      evolvedTo,
+    });
+  }
+
+  saveCollection(col);
+  return results;
+}
+
 // ─── Encounter System (during running) ──────────────────
 
 export function triggerEncounter(distanceKm: number): PokemonSpecies | null {
