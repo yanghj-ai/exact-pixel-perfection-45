@@ -155,7 +155,18 @@ export default function Routine() {
                     </div>
                     <div className="flex-1">
                       <p className="font-medium text-foreground">{routine.title}</p>
-                      <p className="text-xs text-muted-foreground">{routine.category}</p>
+                      <div className="flex items-center gap-2 mt-0.5">
+                        <span className="text-[10px] text-muted-foreground">{routine.category}</span>
+                        <span className="text-[10px] text-primary font-medium">
+                          {routine.reward.food > 0 && `🍎×${routine.reward.food}`}
+                          {routine.reward.food > 0 && ' + '}
+                          ⚡{routine.reward.exp} EXP
+                          {routine.isExercise && ' 🔥'}
+                        </span>
+                      </div>
+                      {routine.reward.bonusLabel && (
+                        <p className="text-[10px] text-secondary mt-0.5">✨ {routine.reward.bonusLabel}</p>
+                      )}
                     </div>
                     <span className="rounded-full bg-muted px-3 py-1 text-xs font-medium text-muted-foreground">
                       {routine.duration}분

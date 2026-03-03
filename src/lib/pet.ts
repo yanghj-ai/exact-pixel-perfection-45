@@ -15,6 +15,13 @@ export interface PetState {
   lastHpDecay: string | null; // ISO date
 }
 
+export interface LevelUpResult {
+  levelsGained: number;
+  newLevel: number;
+  evolved: boolean;
+  newStage?: PokemonStage;
+}
+
 const DEFAULT_PET: PetState = {
   name: '파이리',
   level: 1,
@@ -41,8 +48,19 @@ export function savePet(updates: Partial<PetState>): PetState {
 }
 
 export function getRequiredExp(level: number): number {
-  // Lv.1→2: 100, Lv.2→3: 110, ...
   return Math.floor(100 * Math.pow(1.1, level - 1));
+}
+
+export function getStageForLevel(level: number): PokemonStage {
+  if (level >= 36) return 'charizard';
+  if (level >= 16) return 'charmeleon';
+  return 'charmander';
+}
+
+export function getMaxHpForStage(stage: PokemonStage): number {
+  if (stage === 'charizard') return 200;
+  if (stage === 'charmeleon') return 150;
+  return 100;
 }
 
 export function getStageInfo(stage: PokemonStage) {
@@ -72,6 +90,50 @@ export function getStageInfo(stage: PokemonStage) {
   return stages[stage];
 }
 
+/** Grant food and EXP to pet, handle level-ups */
+export function grantRewards(food: number, exp: number): { pet: PetState; levelUp: LevelUpResult | null } {
+  let pet = getPet();
+  const startLevel = pet.level;
+  const startStage = pet.stage;
+
+  // Add food
+  pet = savePet({
+    foodCount: pet.foodCount + food,
+    totalFoodCollected: pet.totalFoodCollected + food,
+  });
+
+  // Add EXP and check level ups
+  let remainingExp = pet.exp + exp;
+  let currentLevel = pet.level;
+  let levelsGained = 0;
+
+  while (remainingExp >= getRequiredExp(currentLevel)) {
+    remainingExp -= getRequiredExp(currentLevel);
+    currentLevel++;
+    levelsGained++;
+  }
+
+  // Check evolution
+  const newStage = getStageForLevel(currentLevel);
+  const evolved = newStage !== startStage;
+  const newMaxHp = getMaxHpForStage(newStage);
+
+  pet = savePet({
+    exp: remainingExp,
+    level: currentLevel,
+    stage: newStage,
+    maxHp: newMaxHp,
+    // Heal on evolution
+    ...(evolved ? { hp: newMaxHp } : {}),
+  });
+
+  const levelUp: LevelUpResult | null = levelsGained > 0
+    ? { levelsGained, newLevel: currentLevel, evolved, newStage: evolved ? newStage : undefined }
+    : null;
+
+  return { pet, levelUp };
+}
+
 const DIALOGUES = {
   idle: [
     '배고파... 루틴 완료하면 밥 줘!',
@@ -97,6 +159,28 @@ const DIALOGUES = {
     '맛있다! 고마워~ 🍎',
     '힘이 나! 더 강해진 느낌이야!',
     '역시 넌 최고의 트레이너야!',
+  ],
+  cheer: [
+    '힘내! 거의 다 왔어! 💪',
+    '우리 같이 하는 거야!',
+    '대단해! 계속 가자! 🔥',
+    '너 때문에 나도 강해지고 있어!',
+    '조금만 더! 할 수 있어!',
+    '최고야! 이 느낌! 🔥🔥',
+    '우리 최고의 팀이야!',
+    '나도 옆에서 열심히 하고 있어!',
+  ],
+  exerciseCheer: [
+    '🔥 파이리가 함께 운동 중!',
+    '같이 운동하니까 더 재밌어!',
+    '나도 더 강해질 거야! 💪',
+    '파이리의 불꽃이 활활! 🔥',
+  ],
+  complete: [
+    '고마워! 맛있겠다~ 🍎',
+    '오늘도 잘 했어! 최고야! 🎉',
+    '너랑 함께해서 행복해! ❤️',
+    '우리 점점 강해지고 있어! 🔥',
   ],
 };
 
