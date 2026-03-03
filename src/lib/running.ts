@@ -323,3 +323,45 @@ export function getTodayDistance(): number {
   const today = getToday();
   return stats.sessions.filter(s => s.date === today).reduce((sum, s) => sum + s.distanceKm, 0);
 }
+
+/** Debug: add a fake running session with given distance */
+export function debugAddDistance(distanceKm: number): { levelUp: LevelUpResult | null } {
+  const durationSeconds = Math.round(distanceKm * 6 * 60); // ~6 min/km pace
+  const paceMinPerKm = 6;
+  const calories = estimateCalories(distanceKm, durationSeconds);
+
+  const session: RunningSession = {
+    id: `run_debug_${Date.now()}`,
+    date: getToday(),
+    startTime: new Date().toISOString(),
+    endTime: new Date().toISOString(),
+    distanceKm,
+    durationSeconds,
+    paceMinPerKm,
+    route: [],
+    caloriesBurned: calories,
+    rewardGranted: true,
+  };
+
+  const stats = getRunningStats();
+  stats.sessions.push(session);
+  stats.totalDistanceKm = Math.round((stats.totalDistanceKm + distanceKm) * 100) / 100;
+  stats.totalSessions += 1;
+  stats.totalDurationSeconds += durationSeconds;
+  if (distanceKm > stats.longestRunKm) stats.longestRunKm = distanceKm;
+
+  // Update goals
+  for (const g of stats.goals) {
+    if (g.type === 'daily' && g.startDate === getToday()) g.currentKm += distanceKm;
+    if (g.type === 'weekly' && session.date >= g.startDate) g.currentKm += distanceKm;
+    if (g.type === 'monthly' && session.date >= g.startDate) g.currentKm += distanceKm;
+  }
+
+  saveRunningStats(stats);
+
+  const foodReward = Math.max(1, Math.floor(distanceKm));
+  const expReward = Math.max(5, Math.round(distanceKm * 10));
+  const { levelUp } = grantRewards(foodReward, expReward);
+
+  return { levelUp };
+}

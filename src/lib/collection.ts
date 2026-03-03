@@ -117,6 +117,29 @@ export function removeFromParty(uid: string): boolean {
   return true;
 }
 
+/** Reorder party: move a member to a new index */
+export function reorderParty(fromIndex: number, toIndex: number): boolean {
+  const col = getCollection();
+  if (fromIndex < 0 || fromIndex >= col.party.length) return false;
+  if (toIndex < 0 || toIndex >= col.party.length) return false;
+  if (fromIndex === toIndex) return false;
+  const [moved] = col.party.splice(fromIndex, 1);
+  col.party.splice(toIndex, 0, moved);
+  saveCollection(col);
+  return true;
+}
+
+/** Set a party member as the leader (move to index 0) */
+export function setAsLeader(uid: string): boolean {
+  const col = getCollection();
+  const idx = col.party.indexOf(uid);
+  if (idx <= 0) return false; // already leader or not found
+  col.party.splice(idx, 1);
+  col.party.unshift(uid);
+  saveCollection(col);
+  return true;
+}
+
 // ─── Friendship ──────────────────────────────────────────
 
 export function getFriendshipLevel(friendship: number): { level: number; label: string; emoji: string } {

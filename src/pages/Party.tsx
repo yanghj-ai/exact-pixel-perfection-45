@@ -4,11 +4,11 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   getCollection, getParty, addToParty, removeFromParty,
   getFriendshipLevel, interactWithPokemon, feedPokemon,
-  setNickname, type OwnedPokemon,
+  setNickname, setAsLeader, reorderParty, type OwnedPokemon,
 } from '@/lib/collection';
 import { getPet } from '@/lib/pet';
 import { getPokemonById, RARITY_CONFIG } from '@/lib/pokemon-registry';
-import { ArrowLeft, Heart, Apple, Edit3, ArrowRightLeft, X, Check, Sparkles } from 'lucide-react';
+import { ArrowLeft, Heart, Apple, Edit3, ArrowRightLeft, X, Check, Sparkles, Crown, ArrowUp, ArrowDown } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -387,6 +387,71 @@ export default function Party() {
                     {selected.isInParty ? '제외' : '파티에'}
                   </Button>
                 </div>
+
+                {/* Party Order Management */}
+                {selected.isInParty && (() => {
+                  const partyIndex = party.findIndex(p => p.uid === selected.uid);
+                  return (
+                    <div className="space-y-2">
+                      <p className="text-[10px] text-muted-foreground font-medium">파티 순서 관리</p>
+                      <div className="flex gap-2">
+                        {partyIndex > 0 && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => {
+                              if (partyIndex === 1) {
+                                setAsLeader(selected.uid);
+                                toast('🌟 리더로 지정했어요!');
+                              } else {
+                                reorderParty(partyIndex, partyIndex - 1);
+                                toast('순서를 변경했어요!');
+                              }
+                              refresh();
+                            }}
+                            className="flex-1 flex items-center justify-center gap-1.5 h-9 text-xs"
+                          >
+                            <ArrowUp size={14} />
+                            앞으로
+                          </Button>
+                        )}
+                        {partyIndex > 0 && (
+                          <Button
+                            variant="default"
+                            size="sm"
+                            onClick={() => {
+                              setAsLeader(selected.uid);
+                              toast('🌟 리더로 지정했어요!');
+                              refresh();
+                            }}
+                            className="flex-1 flex items-center justify-center gap-1.5 h-9 text-xs"
+                          >
+                            <Crown size={14} />
+                            리더 지정
+                          </Button>
+                        )}
+                        {partyIndex < party.length - 1 && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => {
+                              reorderParty(partyIndex, partyIndex + 1);
+                              toast('순서를 변경했어요!');
+                              refresh();
+                            }}
+                            className="flex-1 flex items-center justify-center gap-1.5 h-9 text-xs"
+                          >
+                            <ArrowDown size={14} />
+                            뒤로
+                          </Button>
+                        )}
+                      </div>
+                      {partyIndex === 0 && (
+                        <p className="text-[9px] text-primary text-center">⭐ 현재 리더 포켓몬입니다</p>
+                      )}
+                    </div>
+                  );
+                })()}
               </div>
             </>
           )}

@@ -5,6 +5,7 @@ import { toast } from 'sonner';
 import { getPet, savePet, grantRewards, getRequiredExp } from '@/lib/pet';
 import { getCollection, addCoins, getCollectionStats, createEgg, catchPokemon } from '@/lib/collection';
 import { getRunningStats } from '@/lib/running';
+import { debugAddDistance } from '@/lib/running';
 import { getBattleRecords, getWeeklyBattleStats } from '@/lib/battle';
 import { healAllAtCenter, getInjuredCount, resetHealthData } from '@/lib/pokemon-health';
 
@@ -83,6 +84,10 @@ export default function DebugPanel({ pageInfo, pageActions, onRefresh }: DebugPa
       catchPokemon(id);
       notify(`⚡ #${id} 포획!`);
     }},
+    { label: '+1km 런닝', emoji: '🏃', color: 'heal', onClick: () => { debugAddDistance(1); notify('🏃 1km 런닝 추가!'); } },
+    { label: '+3km 런닝', emoji: '🏃', color: 'heal', onClick: () => { debugAddDistance(3); notify('🏃 3km 런닝 추가!'); } },
+    { label: '+5km 런닝', emoji: '🏃', color: 'heal', onClick: () => { debugAddDistance(5); notify('🏃 5km 런닝 추가!'); } },
+    { label: '+10km 런닝', emoji: '🏃', color: 'heal', onClick: () => { debugAddDistance(10); notify('🏃 10km 런닝 추가!'); } },
   ];
 
   // ── Common info ──
