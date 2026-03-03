@@ -1,16 +1,37 @@
 import { useState, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { getAllPokemon, getPokemonById, RARITY_CONFIG, TYPE_CONFIG, type PokemonSpecies, type Rarity } from '@/lib/pokemon-registry';
+import { getAllPokemon, getPokemonById, getEvolutionChain, RARITY_CONFIG, TYPE_CONFIG, type PokemonSpecies, type PokemonType } from '@/lib/pokemon-registry';
 import { getOwnedSpeciesIds, getCollection, getFriendshipLevel } from '@/lib/collection';
-import { Search, Filter } from 'lucide-react';
+import { Search, ChevronRight, ArrowLeft, X } from 'lucide-react';
 import BottomNav from '@/components/BottomNav';
+import { useNavigate } from 'react-router-dom';
 
 type FilterMode = 'all' | 'owned' | 'missing';
 
+const TYPE_FILTERS: { type: PokemonType; label: string; emoji: string; bg: string }[] = [
+  { type: 'fire', label: '불꽃', emoji: '🔥', bg: 'bg-orange-500/20' },
+  { type: 'water', label: '물', emoji: '💧', bg: 'bg-blue-500/20' },
+  { type: 'grass', label: '풀', emoji: '🌿', bg: 'bg-green-500/20' },
+  { type: 'electric', label: '전기', emoji: '⚡', bg: 'bg-yellow-400/20' },
+  { type: 'ice', label: '얼음', emoji: '❄️', bg: 'bg-cyan-300/20' },
+  { type: 'psychic', label: '에스퍼', emoji: '🔮', bg: 'bg-pink-500/20' },
+  { type: 'fighting', label: '격투', emoji: '🥊', bg: 'bg-red-700/20' },
+  { type: 'poison', label: '독', emoji: '☠️', bg: 'bg-purple-500/20' },
+  { type: 'ground', label: '땅', emoji: '🏔️', bg: 'bg-amber-700/20' },
+  { type: 'flying', label: '비행', emoji: '🕊️', bg: 'bg-indigo-300/20' },
+  { type: 'bug', label: '벌레', emoji: '🐛', bg: 'bg-lime-500/20' },
+  { type: 'rock', label: '바위', emoji: '🪨', bg: 'bg-stone-500/20' },
+  { type: 'ghost', label: '고스트', emoji: '👻', bg: 'bg-purple-800/20' },
+  { type: 'dragon', label: '드래곤', emoji: '🐉', bg: 'bg-indigo-700/20' },
+  { type: 'fairy', label: '페어리', emoji: '✨', bg: 'bg-pink-300/20' },
+  { type: 'normal', label: '노말', emoji: '⚪', bg: 'bg-gray-400/20' },
+];
+
 export default function Pokedex() {
+  const navigate = useNavigate();
   const [search, setSearch] = useState('');
   const [filterMode, setFilterMode] = useState<FilterMode>('all');
-  const [selectedType, setSelectedType] = useState<string | null>(null);
+  const [selectedType, setSelectedType] = useState<PokemonType | null>(null);
   const [selectedPokemon, setSelectedPokemon] = useState<PokemonSpecies | null>(null);
 
   const ownedIds = getOwnedSpeciesIds();
@@ -19,204 +40,343 @@ export default function Pokedex() {
 
   const filteredPokemon = useMemo(() => {
     let list = allPokemon;
-
     if (search) {
       const q = search.toLowerCase();
       list = list.filter(p => p.name.includes(q) || p.id.toString().includes(q));
     }
-
     if (filterMode === 'owned') list = list.filter(p => ownedIds.has(p.id));
     if (filterMode === 'missing') list = list.filter(p => !ownedIds.has(p.id));
-
-    if (selectedType) list = list.filter(p => p.types.includes(selectedType as any));
-
+    if (selectedType) list = list.filter(p => p.types.includes(selectedType));
     return list;
   }, [search, filterMode, selectedType, allPokemon, ownedIds]);
 
   const ownedOfSpecies = (speciesId: number) => collection.owned.filter(p => p.speciesId === speciesId);
+  const completionPct = Math.round((ownedIds.size / 151) * 100);
 
   return (
     <div className="min-h-screen pb-24">
-      <div className="mx-auto max-w-md px-5 pt-8">
-        {/* Header */}
-        <div className="flex items-center justify-between mb-4">
-          <div>
-            <h1 className="text-xl font-bold text-foreground">포켓몬 도감</h1>
-            <p className="text-xs text-muted-foreground">{ownedIds.size} / 151 발견</p>
+      <div className="mx-auto max-w-md px-0">
+        {/* ── Pokédex Shell Header ── */}
+        <div className="bg-primary px-5 pt-6 pb-4 relative overflow-hidden">
+          {/* Decorative circle (like the Pokédex lens) */}
+          <div className="absolute -top-3 -left-3 w-14 h-14 rounded-full bg-primary-foreground/20 border-4 border-primary-foreground/30" />
+          <div className="absolute top-1 left-1 w-6 h-6 rounded-full bg-accent animate-pulse" />
+          
+          {/* Small indicator lights */}
+          <div className="absolute top-3 left-16 flex gap-1.5">
+            <div className="w-2.5 h-2.5 rounded-full bg-destructive" />
+            <div className="w-2.5 h-2.5 rounded-full bg-secondary" />
+            <div className="w-2.5 h-2.5 rounded-full bg-heal-green" />
           </div>
-          <div className="flex items-center gap-1.5 rounded-full gradient-primary px-3 py-1">
-            <span className="text-xs font-bold text-primary-foreground">{Math.round((ownedIds.size / 151) * 100)}%</span>
+
+          <div className="flex items-end justify-between mt-6">
+            <div>
+              <h1 className="text-xl font-bold text-primary-foreground">포켓몬 도감</h1>
+              <p className="text-xs text-primary-foreground/70 mt-0.5">
+                {ownedIds.size} / 151 종 발견
+              </p>
+            </div>
+            {/* Completion ring */}
+            <div className="relative w-14 h-14">
+              <svg className="w-full h-full -rotate-90" viewBox="0 0 36 36">
+                <path d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" fill="none" stroke="hsl(var(--primary-foreground) / 0.2)" strokeWidth="3" />
+                <path d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" fill="none" stroke="hsl(var(--primary-foreground))" strokeWidth="3" strokeDasharray={`${completionPct}, 100`} strokeLinecap="round" />
+              </svg>
+              <span className="absolute inset-0 flex items-center justify-center text-xs font-bold text-primary-foreground">{completionPct}%</span>
+            </div>
           </div>
         </div>
 
-        {/* Search */}
-        <div className="relative mb-3">
-          <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-          <input
-            type="text"
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-            placeholder="포켓몬 이름 또는 번호 검색..."
-            className="w-full rounded-xl border border-border bg-card pl-9 pr-4 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50"
-          />
+        {/* ── Search & Filters ── */}
+        <div className="px-5 -mt-3 relative z-10">
+          <div className="relative">
+            <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+            <input
+              type="text"
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              placeholder="이름 또는 번호로 검색..."
+              className="w-full rounded-2xl border border-border bg-card pl-9 pr-4 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50 shadow-lg"
+            />
+          </div>
         </div>
 
-        {/* Filter tabs */}
-        <div className="flex gap-2 mb-4">
-          {(['all', 'owned', 'missing'] as FilterMode[]).map(mode => (
-            <button
-              key={mode}
-              onClick={() => setFilterMode(mode)}
-              className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${
-                filterMode === mode ? 'gradient-primary text-primary-foreground' : 'bg-muted text-muted-foreground'
-              }`}
-            >
-              {mode === 'all' ? '전체' : mode === 'owned' ? '보유' : '미발견'}
-            </button>
-          ))}
-        </div>
-
-        {/* Pokemon Grid */}
-        <div className="grid grid-cols-4 gap-2">
-          {filteredPokemon.map(pokemon => {
-            const owned = ownedIds.has(pokemon.id);
-            const rarityConf = RARITY_CONFIG[pokemon.rarity];
-            return (
-              <motion.button
-                key={pokemon.id}
-                whileTap={{ scale: 0.93 }}
-                onClick={() => setSelectedPokemon(pokemon)}
-                className={`glass-card p-2 flex flex-col items-center gap-1 transition-all ${
-                  owned ? 'hover:border-primary/30' : 'opacity-40 grayscale'
+        <div className="px-5 mt-3">
+          {/* Ownership filter */}
+          <div className="flex gap-1.5 mb-3">
+            {(['all', 'owned', 'missing'] as FilterMode[]).map(mode => (
+              <button
+                key={mode}
+                onClick={() => setFilterMode(mode)}
+                className={`rounded-full px-3 py-1.5 text-[11px] font-medium transition-all ${
+                  filterMode === mode
+                    ? 'bg-primary text-primary-foreground shadow-md'
+                    : 'bg-card border border-border text-muted-foreground hover:text-foreground'
                 }`}
               >
-                <div className="relative w-full aspect-square flex items-center justify-center">
-                  {owned ? (
-                    <img
-                      src={pokemon.spriteUrl}
-                      alt={pokemon.name}
-                      className="w-12 h-12 object-contain"
-                      style={{ imageRendering: 'pixelated' }}
-                      loading="lazy"
-                    />
-                  ) : (
-                    <span className="text-2xl">❓</span>
-                  )}
-                </div>
-                <p className="text-[9px] text-muted-foreground">#{String(pokemon.id).padStart(3, '0')}</p>
-                <p className="text-[10px] font-medium text-foreground truncate w-full text-center">
-                  {owned ? pokemon.name : '???'}
-                </p>
-              </motion.button>
-            );
-          })}
+                {mode === 'all' ? `전체 (${allPokemon.length})` : mode === 'owned' ? `보유 (${ownedIds.size})` : `미발견 (${151 - ownedIds.size})`}
+              </button>
+            ))}
+          </div>
+
+          {/* Type filter scroll */}
+          <div className="flex gap-1.5 overflow-x-auto pb-2 scrollbar-none -mx-1 px-1">
+            {selectedType && (
+              <button
+                onClick={() => setSelectedType(null)}
+                className="flex-shrink-0 flex items-center gap-1 rounded-full px-2.5 py-1 text-[10px] bg-destructive/20 text-destructive border border-destructive/30"
+              >
+                <X size={10} /> 초기화
+              </button>
+            )}
+            {TYPE_FILTERS.map(tf => (
+              <button
+                key={tf.type}
+                onClick={() => setSelectedType(selectedType === tf.type ? null : tf.type)}
+                className={`flex-shrink-0 flex items-center gap-1 rounded-full px-2.5 py-1 text-[10px] font-medium transition-all ${
+                  selectedType === tf.type
+                    ? 'bg-primary text-primary-foreground shadow-sm'
+                    : `${tf.bg} text-foreground border border-border/30`
+                }`}
+              >
+                <span>{tf.emoji}</span>
+                <span>{tf.label}</span>
+              </button>
+            ))}
+          </div>
         </div>
 
-        {filteredPokemon.length === 0 && (
-          <div className="text-center py-12">
-            <p className="text-muted-foreground">검색 결과가 없습니다</p>
+        {/* ── Pokémon Grid (Pokédex style) ── */}
+        <div className="px-5 mt-2">
+          <div className="grid grid-cols-3 gap-2">
+            {filteredPokemon.map(pokemon => {
+              const owned = ownedIds.has(pokemon.id);
+              const rarityConf = RARITY_CONFIG[pokemon.rarity];
+              return (
+                <motion.button
+                  key={pokemon.id}
+                  whileTap={{ scale: 0.95 }}
+                  onClick={() => setSelectedPokemon(pokemon)}
+                  className={`relative rounded-2xl p-2.5 flex flex-col items-center gap-1 transition-all border ${
+                    owned
+                      ? 'bg-card border-border/50 hover:border-primary/40 hover:shadow-md'
+                      : 'bg-muted/30 border-border/20 opacity-50'
+                  }`}
+                >
+                  {/* Number badge */}
+                  <span className="absolute top-1.5 left-2 text-[9px] text-muted-foreground font-mono">
+                    #{String(pokemon.id).padStart(3, '0')}
+                  </span>
+
+                  {/* Rarity dot */}
+                  {owned && (
+                    <span className={`absolute top-1.5 right-2 w-2 h-2 rounded-full ${rarityConf.bgColor} border ${
+                      pokemon.rarity === 'legendary' ? 'animate-pulse border-amber-400' :
+                      pokemon.rarity === 'epic' ? 'border-purple-400' :
+                      'border-transparent'
+                    }`} />
+                  )}
+
+                  {/* Sprite */}
+                  <div className="w-14 h-14 flex items-center justify-center mt-2">
+                    {owned ? (
+                      <img
+                        src={pokemon.spriteUrl}
+                        alt={pokemon.name}
+                        className="w-14 h-14 object-contain"
+                        style={{ imageRendering: 'pixelated' }}
+                        loading="lazy"
+                      />
+                    ) : (
+                      <div className="w-10 h-10 rounded-full bg-muted/50 flex items-center justify-center">
+                        <span className="text-lg text-muted-foreground/40">?</span>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Name */}
+                  <p className="text-[10px] font-medium text-foreground truncate w-full text-center">
+                    {owned ? pokemon.name : '???'}
+                  </p>
+
+                  {/* Type chips */}
+                  {owned && (
+                    <div className="flex gap-0.5">
+                      {pokemon.types.map(t => (
+                        <span key={t} className={`${TYPE_CONFIG[t].color} w-3.5 h-3.5 rounded-full flex items-center justify-center`}>
+                          <span className="text-[7px]">{TYPE_CONFIG[t].emoji}</span>
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </motion.button>
+              );
+            })}
           </div>
-        )}
+
+          {filteredPokemon.length === 0 && (
+            <div className="text-center py-16">
+              <span className="text-4xl mb-3 block">🔍</span>
+              <p className="text-muted-foreground text-sm">검색 결과가 없습니다</p>
+            </div>
+          )}
+        </div>
       </div>
 
-      {/* Pokemon Detail Modal */}
+      {/* ── Detail Modal (Bottom Sheet) ── */}
       <AnimatePresence>
         {selectedPokemon && (
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 backdrop-blur-sm"
+            className="fixed inset-0 z-50 flex items-end justify-center bg-black/70 backdrop-blur-sm"
             onClick={() => setSelectedPokemon(null)}
           >
             <motion.div
-              initial={{ y: 300 }}
+              initial={{ y: '100%' }}
               animate={{ y: 0 }}
-              exit={{ y: 300 }}
-              transition={{ type: 'spring', damping: 25 }}
+              exit={{ y: '100%' }}
+              transition={{ type: 'spring', damping: 28, stiffness: 300 }}
               onClick={e => e.stopPropagation()}
-              className="w-full max-w-md bg-card rounded-t-3xl p-6 pb-10 border-t border-border"
+              className="w-full max-w-md bg-card rounded-t-3xl overflow-hidden max-h-[85vh] overflow-y-auto"
             >
               {(() => {
                 const owned = ownedIds.has(selectedPokemon.id);
                 const instances = ownedOfSpecies(selectedPokemon.id);
                 const rarityConf = RARITY_CONFIG[selectedPokemon.rarity];
+                const evoChain = getEvolutionChain(selectedPokemon.id);
 
                 return (
-                  <div className="text-center">
-                    <div className="flex justify-center mb-4">
-                      {owned ? (
-                        <motion.img
-                          src={selectedPokemon.spriteUrl}
-                          alt={selectedPokemon.name}
-                          className="w-24 h-24 object-contain"
-                          style={{ imageRendering: 'pixelated' }}
-                          animate={{ y: [0, -5, 0] }}
-                          transition={{ duration: 2, repeat: Infinity }}
-                        />
-                      ) : (
-                        <div className="w-24 h-24 flex items-center justify-center">
-                          <span className="text-5xl">❓</span>
+                  <>
+                    {/* Header with type-colored background */}
+                    <div className={`relative px-6 pt-6 pb-12 ${TYPE_CONFIG[selectedPokemon.types[0]].color}`}>
+                      <button onClick={() => setSelectedPokemon(null)} className="absolute top-4 right-4 w-8 h-8 rounded-full bg-black/30 flex items-center justify-center">
+                        <X size={16} className="text-white" />
+                      </button>
+                      <p className="text-white/70 text-xs font-mono">#{String(selectedPokemon.id).padStart(3, '0')}</p>
+                      <h2 className="text-xl font-bold text-white mt-0.5">
+                        {owned ? selectedPokemon.name : '???'}
+                      </h2>
+                      {owned && (
+                        <div className="flex gap-1.5 mt-2">
+                          {selectedPokemon.types.map(t => (
+                            <span key={t} className="bg-white/20 text-white text-[10px] px-2.5 py-0.5 rounded-full font-medium backdrop-blur-sm">
+                              {TYPE_CONFIG[t].emoji} {TYPE_CONFIG[t].label}
+                            </span>
+                          ))}
+                          <span className="bg-white/20 text-white text-[10px] px-2.5 py-0.5 rounded-full font-medium">
+                            {rarityConf.emoji} {rarityConf.label}
+                          </span>
                         </div>
                       )}
                     </div>
 
-                    <div className="flex items-center justify-center gap-2 mb-1">
-                      <span className="text-xs text-muted-foreground">#{String(selectedPokemon.id).padStart(3, '0')}</span>
-                      <h2 className="text-lg font-bold text-foreground">
-                        {owned ? selectedPokemon.name : '???'}
-                      </h2>
+                    {/* Sprite floating over header */}
+                    <div className="flex justify-center -mt-10 relative z-10 mb-4">
+                      {owned ? (
+                        <motion.div
+                          className="w-24 h-24 rounded-2xl bg-card border-2 border-border shadow-xl flex items-center justify-center"
+                          animate={{ y: [0, -4, 0] }}
+                          transition={{ duration: 2.5, repeat: Infinity }}
+                        >
+                          <img
+                            src={selectedPokemon.spriteUrl}
+                            alt={selectedPokemon.name}
+                            className="w-20 h-20 object-contain"
+                            style={{ imageRendering: 'pixelated' }}
+                          />
+                        </motion.div>
+                      ) : (
+                        <div className="w-24 h-24 rounded-2xl bg-muted border-2 border-border shadow-xl flex items-center justify-center">
+                          <span className="text-4xl text-muted-foreground/40">?</span>
+                        </div>
+                      )}
                     </div>
 
-                    {owned && (
-                      <>
-                        <div className="flex gap-1.5 justify-center mb-3">
-                          {selectedPokemon.types.map(t => {
-                            const typeConf = TYPE_CONFIG[t];
-                            return (
-                              <span key={t} className={`${typeConf.color} text-white text-[10px] px-2 py-0.5 rounded-full`}>
-                                {typeConf.emoji} {typeConf.label}
-                              </span>
-                            );
-                          })}
-                          <span className={`${rarityConf.bgColor} ${rarityConf.color} text-[10px] px-2 py-0.5 rounded-full`}>
-                            {rarityConf.emoji} {rarityConf.label}
-                          </span>
+                    <div className="px-6 pb-8 space-y-4">
+                      {/* Description */}
+                      {owned && (
+                        <p className="text-xs text-muted-foreground text-center leading-relaxed">
+                          {selectedPokemon.description}
+                        </p>
+                      )}
+
+                      {!owned && (
+                        <div className="text-center py-4">
+                          <span className="text-3xl mb-2 block">🔒</span>
+                          <p className="text-sm text-muted-foreground">아직 발견하지 못한 포켓몬</p>
+                          <p className="text-xs text-muted-foreground/70 mt-1">런닝이나 알 부화로 만나보세요!</p>
                         </div>
+                      )}
 
-                        <p className="text-xs text-muted-foreground mb-4">{selectedPokemon.description}</p>
-
-                        {instances.length > 0 && (
-                          <div className="glass-card p-3 text-left space-y-2">
-                            <p className="text-[10px] text-muted-foreground font-medium">보유 중 ({instances.length}마리)</p>
-                            {instances.map(inst => {
-                              const fl = getFriendshipLevel(inst.friendship);
+                      {/* Evolution Chain */}
+                      {owned && evoChain.length > 1 && (
+                        <div className="glass-card p-3">
+                          <p className="text-[10px] text-muted-foreground font-semibold mb-2">진화 체인</p>
+                          <div className="flex items-center justify-center gap-1">
+                            {evoChain.map((evo, i) => {
+                              const evoOwned = ownedIds.has(evo.id);
                               return (
-                                <div key={inst.uid} className="flex items-center justify-between">
-                                  <div className="flex items-center gap-2">
-                                    <span className="text-sm">{fl.emoji}</span>
-                                    <span className="text-xs text-foreground">{inst.nickname || selectedPokemon.name}</span>
-                                  </div>
-                                  <span className="text-[10px] text-muted-foreground">{fl.label}</span>
+                                <div key={evo.id} className="flex items-center gap-1">
+                                  <button
+                                    onClick={() => setSelectedPokemon(evo)}
+                                    className={`flex flex-col items-center p-1.5 rounded-xl transition-all ${
+                                      evo.id === selectedPokemon.id ? 'bg-primary/15 ring-1 ring-primary/30' : 'hover:bg-muted/50'
+                                    }`}
+                                  >
+                                    {evoOwned ? (
+                                      <img src={evo.spriteUrl} alt={evo.name} className="w-10 h-10 object-contain" style={{ imageRendering: 'pixelated' }} />
+                                    ) : (
+                                      <div className="w-10 h-10 rounded-full bg-muted flex items-center justify-center">
+                                        <span className="text-sm text-muted-foreground/40">?</span>
+                                      </div>
+                                    )}
+                                    <span className="text-[8px] text-muted-foreground mt-0.5">{evoOwned ? evo.name : '???'}</span>
+                                    {evo.evolveLevel && (
+                                      <span className="text-[7px] text-primary/70">Lv.{evo.evolveLevel}</span>
+                                    )}
+                                  </button>
+                                  {i < evoChain.length - 1 && (
+                                    <ChevronRight size={12} className="text-muted-foreground/40 flex-shrink-0" />
+                                  )}
                                 </div>
                               );
                             })}
                           </div>
-                        )}
-                      </>
-                    )}
+                        </div>
+                      )}
 
-                    {!owned && (
-                      <p className="text-xs text-muted-foreground">아직 발견하지 못한 포켓몬입니다.<br/>런닝을 통해 만나보세요!</p>
-                    )}
-
-                    <button
-                      onClick={() => setSelectedPokemon(null)}
-                      className="mt-5 w-full rounded-xl bg-muted py-2.5 text-sm font-medium text-foreground"
-                    >
-                      닫기
-                    </button>
-                  </div>
+                      {/* Owned instances */}
+                      {owned && instances.length > 0 && (
+                        <div className="glass-card p-3">
+                          <p className="text-[10px] text-muted-foreground font-semibold mb-2">보유 중 ({instances.length}마리)</p>
+                          <div className="space-y-1.5">
+                            {instances.map(inst => {
+                              const fl = getFriendshipLevel(inst.friendship);
+                              return (
+                                <div key={inst.uid} className="flex items-center justify-between py-1">
+                                  <div className="flex items-center gap-2">
+                                    <span className="text-sm">{fl.emoji}</span>
+                                    <div>
+                                      <span className="text-xs text-foreground font-medium">{inst.nickname || selectedPokemon.name}</span>
+                                      <span className="text-[10px] text-muted-foreground ml-1.5">Lv.{inst.level}</span>
+                                    </div>
+                                  </div>
+                                  <div className="text-right">
+                                    <span className="text-[10px] text-muted-foreground">{fl.label}</span>
+                                    <div className="h-1 w-12 rounded-full bg-muted overflow-hidden mt-0.5">
+                                      <div className="h-full rounded-full bg-primary" style={{ width: `${(inst.friendship / 255) * 100}%` }} />
+                                    </div>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </>
                 );
               })()}
             </motion.div>

@@ -29,6 +29,7 @@ export default function Settings() {
       localStorage.removeItem('routinmon-collection');
       localStorage.removeItem('routinmon-legendary');
       localStorage.removeItem('routinmon-battles');
+      localStorage.removeItem('routinmon-inventory');
       navigate('/');
     }
   };
