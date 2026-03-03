@@ -1,5 +1,6 @@
 // Pet state management for Routinmon
 import { syncStarterWithPet } from '@/lib/collection';
+import { getPokemonById } from './pokemon-registry';
 
 export type PokemonStage = 'charmander' | 'charmeleon' | 'charizard';
 
@@ -119,21 +120,19 @@ export function grantRewards(food: number, exp: number): { pet: PetState; levelU
   const evolved = newStage !== startStage;
   const newMaxHp = getMaxHpForStage(newStage);
 
-  // Update pet name on evolution
-  const stageName = getStageInfo(newStage).name;
+  // Sync starter species/level first, then use synced species name
+  const syncedStarterSpeciesId = syncStarterWithPet(currentLevel, newStage, pet.name);
+  const syncedStarterName = syncedStarterSpeciesId ? getPokemonById(syncedStarterSpeciesId)?.name : undefined;
 
   pet = savePet({
     exp: remainingExp,
     level: currentLevel,
     stage: newStage,
-    name: stageName,
+    name: syncedStarterName || pet.name,
     maxHp: newMaxHp,
     // Heal on evolution
     ...(evolved ? { hp: newMaxHp } : {}),
   });
-
-  // ★ Sync starter pokemon in collection with pet level & stage
-  syncStarterWithPet(currentLevel, newStage);
 
   const levelUp: LevelUpResult | null = levelsGained > 0
     ? { levelsGained, newLevel: currentLevel, evolved, newStage: evolved ? newStage : undefined }
