@@ -13,14 +13,16 @@ const SHEETS: Record<PokemonStage, string> = {
 
 const FRAME_COUNT = 4;
 
-type PetMood = 'happy' | 'normal' | 'tired' | 'hungry' | 'critical';
+type PetMood = 'ecstatic' | 'happy' | 'normal' | 'tired' | 'hungry' | 'critical' | 'lonely';
 
-function getMood(hp: number, maxHp: number, happiness: number): PetMood {
+function getMood(hp: number, maxHp: number, happiness: number, streak: number): PetMood {
   const hpRatio = hp / maxHp;
   if (hpRatio <= 0) return 'critical';
   if (hpRatio <= 0.2) return 'hungry';
+  if (streak <= 0 && happiness <= 1.5) return 'lonely';
   if (hpRatio <= 0.45 || happiness <= 1) return 'tired';
-  if (hpRatio >= 0.75 && happiness >= 3) return 'happy';
+  if (hpRatio >= 0.8 && happiness >= 4 && streak >= 7) return 'ecstatic';
+  if (hpRatio >= 0.7 && happiness >= 3 && streak >= 3) return 'happy';
   return 'normal';
 }
 
@@ -30,10 +32,19 @@ const MOOD_CONFIG: Record<PetMood, {
   bounce: { y: number[]; duration: number };
   filter: string;
   glowOpacity: number;
-  particleType: 'flame' | 'sweat' | 'zzz' | 'hunger' | 'sparkle' | 'none';
+  particleType: 'flame' | 'sweat' | 'zzz' | 'hunger' | 'sparkle' | 'none' | 'hearts' | 'dust';
   statusEmoji: string;
   shadowScale: number;
 }> = {
+  ecstatic: {
+    frameSpeed: 200,
+    bounce: { y: [0, -14, 0], duration: 0.9 },
+    filter: 'drop-shadow(0 6px 20px hsl(18 100% 60% / 0.5)) brightness(1.15) saturate(1.2)',
+    glowOpacity: 0.3,
+    particleType: 'hearts',
+    statusEmoji: '🤩',
+    shadowScale: 1.1,
+  },
   happy: {
     frameSpeed: 250,
     bounce: { y: [0, -10, 0], duration: 1.2 },
@@ -79,6 +90,15 @@ const MOOD_CONFIG: Record<PetMood, {
     statusEmoji: '😵',
     shadowScale: 0.7,
   },
+  lonely: {
+    frameSpeed: 700,
+    bounce: { y: [0, -2, 0], duration: 3 },
+    filter: 'drop-shadow(0 2px 6px hsl(210 30% 40% / 0.3)) saturate(0.4) brightness(0.7) hue-rotate(20deg)',
+    glowOpacity: 0.02,
+    particleType: 'dust',
+    statusEmoji: '😢',
+    shadowScale: 0.8,
+  },
 };
 
 const DISPLAY_SIZES: Record<PokemonStage, number> = {
@@ -92,13 +112,14 @@ interface PetSpriteProps {
   hp: number;
   maxHp: number;
   happiness?: number;
+  streak?: number;
   className?: string;
   size?: 'normal' | 'small';
 }
 
-export default function PetSprite({ stage, hp, maxHp, happiness = 3, className = '', size = 'normal' }: PetSpriteProps) {
+export default function PetSprite({ stage, hp, maxHp, happiness = 3, streak = 1, className = '', size = 'normal' }: PetSpriteProps) {
   const [frame, setFrame] = useState(0);
-  const mood = getMood(hp, maxHp, happiness);
+  const mood = getMood(hp, maxHp, happiness, streak);
   const config = MOOD_CONFIG[mood];
   const displaySize = size === 'small' ? 60 : DISPLAY_SIZES[stage];
 
@@ -167,8 +188,12 @@ export default function PetSprite({ stage, hp, maxHp, happiness = 3, className =
             ? { y: config.bounce.y, opacity: [0.45, 0.55, 0.45], rotate: [0, -2, 0, 2, 0] }
             : mood === 'hungry'
             ? { y: config.bounce.y, rotate: [0, -3, 0, 3, 0] }
+            : mood === 'lonely'
+            ? { y: config.bounce.y, rotate: [0, -1, 1, 0], scale: [1, 0.97, 1] }
             : mood === 'tired'
             ? { y: config.bounce.y, rotate: [0, -1, 0] }
+            : mood === 'ecstatic'
+            ? { y: config.bounce.y, scale: [1, 1.06, 1], rotate: [0, 3, -3, 0] }
             : mood === 'happy'
             ? { y: config.bounce.y, scale: [1, 1.03, 1] }
             : { y: config.bounce.y }
@@ -419,6 +444,83 @@ function MoodParticles({ mood, displaySize }: { mood: PetMood; displaySize: numb
           transition={{ duration: 4, repeat: Infinity }}
         >
           ⭐💫⭐
+        </motion.div>
+      </>
+    );
+  }
+
+  if (config.particleType === 'hearts') {
+    return (
+      <>
+        {[0, 1, 2, 3, 4, 5, 6].map((i) => (
+          <motion.div
+            key={`heart-${i}`}
+            className="absolute text-sm pointer-events-none"
+            style={{
+              bottom: displaySize * 0.15 + (i % 3) * 15,
+              left: `${15 + i * 11}%`,
+            }}
+            animate={{
+              y: [0, -35 - i * 6, -60],
+              x: [(i - 3) * 5, (i - 3) * 10],
+              opacity: [0, 1, 0],
+              scale: [0.3, 1.3, 0],
+              rotate: [0, (i % 2 === 0 ? 20 : -20), 0],
+            }}
+            transition={{
+              duration: 1.8 + i * 0.1,
+              repeat: Infinity,
+              delay: i * 0.3,
+              ease: 'easeOut',
+            }}
+          >
+            {i % 3 === 0 ? '❤️' : i % 3 === 1 ? '✨' : '🔥'}
+          </motion.div>
+        ))}
+      </>
+    );
+  }
+
+  if (config.particleType === 'dust') {
+    return (
+      <>
+        {[0, 1, 2].map((i) => (
+          <motion.div
+            key={`dust-${i}`}
+            className="absolute rounded-full pointer-events-none"
+            style={{
+              width: 6,
+              height: 6,
+              bottom: displaySize * 0.05,
+              left: `${30 + i * 15}%`,
+              background: 'hsl(var(--muted-foreground) / 0.3)',
+            }}
+            animate={{
+              y: [0, -8, 0],
+              opacity: [0, 0.4, 0],
+            }}
+            transition={{
+              duration: 3,
+              repeat: Infinity,
+              delay: i * 1,
+            }}
+          />
+        ))}
+        <motion.div
+          className="absolute text-lg pointer-events-none"
+          style={{ top: -10, left: displaySize * 0.15 }}
+          animate={{ opacity: [0.2, 0.5, 0.2], y: [0, -5, 0] }}
+          transition={{ duration: 3.5, repeat: Infinity }}
+        >
+          😢
+        </motion.div>
+        <motion.div
+          className="absolute text-xs pointer-events-none"
+          style={{ top: displaySize * 0.3, right: displaySize * 0.05, color: 'hsl(var(--muted-foreground))' }}
+          animate={{ opacity: [0, 0.5, 0] }}
+          transition={{ duration: 4, repeat: Infinity, delay: 1.5 }}
+        >
+          ...보고싶어
         </motion.div>
       </>
     );

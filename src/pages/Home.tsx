@@ -97,7 +97,7 @@ export default function Home() {
           </AnimatePresence>
 
           {/* Pixel art pet */}
-          <PetSprite stage={pet.stage} hp={pet.hp} maxHp={pet.maxHp} happiness={pet.happiness} />
+          <PetSprite stage={pet.stage} hp={pet.hp} maxHp={pet.maxHp} happiness={pet.happiness} streak={profile.streak} />
 
           {/* Pet name */}
           <p className="mt-3 text-lg font-bold text-foreground">{pet.name}</p>
