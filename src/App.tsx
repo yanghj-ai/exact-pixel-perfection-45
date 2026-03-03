@@ -9,6 +9,7 @@ import Running from "./pages/Running";
 import RunningHistory from "./pages/RunningHistory";
 import Pokedex from "./pages/Pokedex";
 import Settings from "./pages/Settings";
+import Party from "./pages/Party";
 import NotFound from "./pages/NotFound";
 import { getProfile } from "./lib/storage";
 
@@ -31,6 +32,7 @@ const App = () => (
           <Route path="/run" element={<Running />} />
           <Route path="/history" element={<RunningHistory />} />
           <Route path="/pokedex" element={<Pokedex />} />
+          <Route path="/party" element={<Party />} />
           <Route path="/settings" element={<Settings />} />
           <Route path="*" element={<NotFound />} />
         </Routes>

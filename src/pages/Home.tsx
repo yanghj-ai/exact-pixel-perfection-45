@@ -195,13 +195,13 @@ export default function Home() {
         {/* Party Preview */}
         {party.length > 0 && (
           <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }} className="glass-card p-4 mb-4">
-            <div className="flex items-center justify-between mb-3">
+            <button onClick={() => navigate('/party')} className="flex items-center justify-between mb-3 w-full">
               <div className="flex items-center gap-2">
                 <Users size={14} className="text-primary" />
                 <span className="text-xs font-bold text-foreground">내 파티</span>
               </div>
-              <span className="text-[10px] text-muted-foreground">{party.length}/6</span>
-            </div>
+              <span className="text-[10px] text-muted-foreground">{party.length}/6 →</span>
+            </button>
             <div className="flex gap-2">
               {Array.from({ length: 6 }).map((_, i) => {
                 const member = party[i];
