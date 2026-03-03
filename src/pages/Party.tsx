@@ -16,6 +16,7 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
 } from '@/components/ui/dialog';
 import { getInventory, SHOP_ITEMS, useRareCandy, useEvolutionStone } from '@/lib/shop';
+import { healSingle, getEffectiveHpRatio } from '@/lib/pokemon-health';
 import BottomNav from '@/components/BottomNav';
 import DebugPanel from '@/components/DebugPanel';
 import ItemEffectOverlay, { type ItemEffectData } from '@/components/ItemEffectOverlay';
@@ -153,31 +154,8 @@ export default function Party() {
                   whileTap={{ scale: 0.95 }}
                   onClick={() => {
                     if (member) {
-                      if (i === 0) {
-                        setSelected(member);
-                      } else {
-                        setAsLeader(member.uid);
-                        toast('🌟 리더로 지정했어요!');
-                        refresh();
-                      }
-                    }
-                  }}
-                  onContextMenu={(e) => {
-                    e.preventDefault();
-                    if (member && i !== 0) setSelected(member);
-                  }}
-                  onPointerDown={(e) => {
-                    if (!member || i === 0) return;
-                    const timer = setTimeout(() => {
                       setSelected(member);
-                    }, 500);
-                    const cleanup = () => {
-                      clearTimeout(timer);
-                      e.currentTarget.removeEventListener('pointerup', cleanup);
-                      e.currentTarget.removeEventListener('pointerleave', cleanup);
-                    };
-                    e.currentTarget.addEventListener('pointerup', cleanup);
-                    e.currentTarget.addEventListener('pointerleave', cleanup);
+                    }
                   }}
                   className={`relative glass-card p-3 flex flex-col items-center gap-1 min-h-[120px] justify-center transition-colors ${
                     member ? 'hover:border-primary/40' : ''
@@ -510,11 +488,26 @@ export default function Party() {
                             onClick={() => {
                               const beforeLevel = selected.level;
                               const beforeSpeciesId = selected.speciesId;
-                              let result;
+                              let result: any;
                               if (item.effect === 'level_up' || item.effect === 'level_up_5') {
                                 result = useRareCandy(selected.uid, item.effect === 'level_up_5' ? 5 : 1);
                               } else if (item.effect.startsWith('evolve_')) {
                                 result = useEvolutionStone(selected.uid, item.id);
+                              } else if (item.effect === 'heal_50' || item.effect === 'heal_100') {
+                                const healAmount = item.effect === 'heal_100' ? 1 : 0.5;
+                                const hpBefore = getEffectiveHpRatio(selected.uid);
+                                if (hpBefore >= 1) {
+                                  toast('이미 건강한 상태입니다!');
+                                  return;
+                                }
+                                healSingle(selected.uid, healAmount);
+                                const inv2 = getInventory();
+                                inv2.items[item.id] = (inv2.items[item.id] || 1) - 1;
+                                if (inv2.items[item.id] <= 0) delete inv2.items[item.id];
+                                localStorage.setItem('routinmon-inventory', JSON.stringify(inv2));
+                                toast.success(`${item.name}을(를) 사용했습니다! HP 회복!`);
+                                refresh();
+                                return;
                               } else {
                                 return;
                               }
@@ -614,11 +607,27 @@ export default function Party() {
                     onClick={() => {
                       const beforeLevel = selected.level;
                       const beforeSpeciesId = selected.speciesId;
-                      let result;
+                      let result: any;
                       if (item.effect === 'level_up' || item.effect === 'level_up_5') {
                         result = useRareCandy(selected.uid, item.effect === 'level_up_5' ? 5 : 1);
                       } else if (item.effect.startsWith('evolve_')) {
                         result = useEvolutionStone(selected.uid, item.id);
+                      } else if (item.effect === 'heal_50' || item.effect === 'heal_100') {
+                        const healAmount = item.effect === 'heal_100' ? 1 : 0.5;
+                        const hpBefore = getEffectiveHpRatio(selected.uid);
+                        if (hpBefore >= 1) {
+                          toast('이미 건강한 상태입니다!');
+                          return;
+                        }
+                        healSingle(selected.uid, healAmount);
+                        const inv = getInventory();
+                        inv.items[item.id] = (inv.items[item.id] || 1) - 1;
+                        if (inv.items[item.id] <= 0) delete inv.items[item.id];
+                        localStorage.setItem('routinmon-inventory', JSON.stringify(inv));
+                        setShowItemMenu(false);
+                        toast.success(`${item.name}을(를) 사용했습니다! HP 회복!`);
+                        refresh();
+                        return;
                       } else {
                         return;
                       }

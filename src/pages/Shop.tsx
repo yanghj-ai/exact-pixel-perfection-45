@@ -8,13 +8,14 @@ import { SHOP_ITEMS, purchaseItem, getInventory, type ShopItem } from '@/lib/sho
 import BottomNav from '@/components/BottomNav';
 import DebugPanel from '@/components/DebugPanel';
 
-type Category = 'all' | 'evolution' | 'boost' | 'food';
+type Category = 'all' | 'evolution' | 'boost' | 'food' | 'heal';
 
 const CATEGORY_CONFIG: Record<Category, { label: string; emoji: string }> = {
   all: { label: '전체', emoji: '🛒' },
   evolution: { label: '진화의 돌', emoji: '💎' },
   boost: { label: '레벨업', emoji: '🍬' },
   food: { label: '먹이', emoji: '🍎' },
+  heal: { label: '회복', emoji: '💊' },
 };
 
 export default function Shop() {
