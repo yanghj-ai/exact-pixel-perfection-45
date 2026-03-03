@@ -6,7 +6,7 @@ import { getPet, savePet, applyHpDecay, feedPet, interactPet, getRandomDialogue,
 import type { PetState, LevelUpResult } from '@/lib/pet';
 import { checkAndGrantAttendance } from '@/lib/attendance';
 import { getRunningStats, type RunningStats } from '@/lib/running';
-import { getCollection, getCollectionStats, getParty, interactWithPokemon, addCoins } from '@/lib/collection';
+import { getCollection, getCollectionStats, getParty, interactWithPokemon, addCoins, syncStarterWithPet } from '@/lib/collection';
 import { getPokemonById, RARITY_CONFIG } from '@/lib/pokemon-registry';
 import { Apple, Play, Target, TrendingUp, Egg, BookOpen, Users, Heart, Stethoscope, AlertTriangle } from 'lucide-react';
 import { toast } from 'sonner';
@@ -42,6 +42,9 @@ export default function Home() {
       navigate('/', { replace: true });
       return;
     }
+    // ★ Sync starter data on every Home visit (fixes stale data)
+    syncStarterWithPet(pet.level, pet.stage);
+
     const updated = applyHpDecay(pet);
     setPet(updated);
     setDialogue(getRandomDialogue(updated.hp <= 0 ? 'hungry' : 'idle'));
