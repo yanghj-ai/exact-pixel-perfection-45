@@ -16,6 +16,7 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
 } from '@/components/ui/dialog';
 import BottomNav from '@/components/BottomNav';
+import DebugPanel from '@/components/DebugPanel';
 
 const SPRITE_BASE = 'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/versions/generation-v/black-white/animated';
 
@@ -422,6 +423,7 @@ export default function Party() {
         </DialogContent>
       </Dialog>
 
+      <DebugPanel onRefresh={refresh} />
       <BottomNav />
     </div>
   );

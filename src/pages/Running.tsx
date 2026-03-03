@@ -30,6 +30,7 @@ import PetSprite from '@/components/PetSprite';
 import BottomNav from '@/components/BottomNav';
 import LevelUpOverlay from '@/components/LevelUpOverlay';
 import RunningMap from '@/components/RunningMap';
+import DebugPanel from '@/components/DebugPanel';
 
 type RunState = 'idle' | 'running' | 'paused' | 'completed';
 
@@ -709,6 +710,7 @@ export default function RunningPage() {
           </motion.div>
         )}
       </div>
+      <DebugPanel />
       <BottomNav />
     </div>
   );

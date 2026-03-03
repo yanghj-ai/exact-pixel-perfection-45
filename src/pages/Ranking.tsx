@@ -6,6 +6,7 @@ import { getWeeklyRanking, type RankerEntry } from '@/lib/npc-trainers';
 import { getWeeklyBattleStats, getBattleRecords } from '@/lib/battle';
 import { Button } from '@/components/ui/button';
 import BottomNav from '@/components/BottomNav';
+import DebugPanel from '@/components/DebugPanel';
 
 const RANK_BADGES = ['🥇', '🥈', '🥉'];
 
@@ -148,6 +149,7 @@ export default function RankingPage() {
             </div>
           </motion.div>
         )}
+        <DebugPanel />
       </div>
       <BottomNav />
     </div>

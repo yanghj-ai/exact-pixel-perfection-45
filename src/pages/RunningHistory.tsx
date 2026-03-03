@@ -5,6 +5,7 @@ import { useNavigate } from 'react-router-dom';
 import { getRunningStats, formatDuration, formatPace, type RunningStats, type RunningSession } from '@/lib/running';
 import RunningMap from '@/components/RunningMap';
 import BottomNav from '@/components/BottomNav';
+import DebugPanel from '@/components/DebugPanel';
 
 function SessionCard({ session, index }: { session: RunningSession; index: number }) {
   const [expanded, setExpanded] = useState(false);
@@ -237,6 +238,7 @@ export default function RunningHistory() {
             ))}
           </div>
         )}
+        <DebugPanel />
       </div>
       <BottomNav />
     </div>
