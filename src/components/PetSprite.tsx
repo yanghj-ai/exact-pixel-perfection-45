@@ -376,7 +376,7 @@ export default function PetSprite({ stage, hp, maxHp, happiness = 3, streak = 1,
         >
           {/* Individual frame */}
           <div
-            className="w-full h-full overflow-hidden rounded-2xl"
+            className="w-full h-full overflow-hidden"
             style={{
               filter: profile.filter,
               transform: facingLeft ? 'scaleX(-1)' : 'scaleX(1)',
