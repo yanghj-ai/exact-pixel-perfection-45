@@ -1,14 +1,25 @@
 import { useEffect, useState, useMemo, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import type { PokemonStage } from '@/lib/pet';
-import charmanderSheet from '@/assets/charmander-spritesheet.png';
-import charmeleonSheet from '@/assets/charmeleon-spritesheet.png';
-import charizardSheet from '@/assets/charizard-spritesheet.png';
 
-const SHEETS: Record<PokemonStage, string> = {
-  charmander: charmanderSheet,
-  charmeleon: charmeleonSheet,
-  charizard: charizardSheet,
+// Individual frame imports
+import charmanderF1 from '@/assets/charmander-frame1.png';
+import charmanderF2 from '@/assets/charmander-frame2.png';
+import charmanderF3 from '@/assets/charmander-frame3.png';
+import charmanderF4 from '@/assets/charmander-frame4.png';
+import charmeleonF1 from '@/assets/charmeleon-frame1.png';
+import charmeleonF2 from '@/assets/charmeleon-frame2.png';
+import charmeleonF3 from '@/assets/charmeleon-frame3.png';
+import charmeleonF4 from '@/assets/charmeleon-frame4.png';
+import charizardF1 from '@/assets/charizard-frame1.png';
+import charizardF2 from '@/assets/charizard-frame2.png';
+import charizardF3 from '@/assets/charizard-frame3.png';
+import charizardF4 from '@/assets/charizard-frame4.png';
+
+const FRAMES: Record<PokemonStage, string[]> = {
+  charmander: [charmanderF1, charmanderF2, charmanderF3, charmanderF4],
+  charmeleon: [charmeleonF1, charmeleonF2, charmeleonF3, charmeleonF4],
+  charizard: [charizardF1, charizardF2, charizardF3, charizardF4],
 };
 
 const FRAME_COUNT = 4;
@@ -189,8 +200,7 @@ export default function PetSprite({ stage, hp, maxHp, happiness = 3, streak = 1,
   const mood = getMood(hp, maxHp, happiness, streak);
   const profile = MOOD_PROFILES[mood];
   const displaySize = size === 'small' ? 60 : DISPLAY_SIZES[stage];
-  const frameCount = FRAME_COUNT;
-  const sheetSrc = SHEETS[stage];
+  const currentFrameSrc = FRAMES[stage][frame];
 
   // Wandering state
   const [posX, setPosX] = useState(0);
@@ -208,7 +218,7 @@ export default function PetSprite({ stage, hp, maxHp, happiness = 3, streak = 1,
       ? profile.frameSpeed * 2
       : profile.frameSpeed;
     const interval = setInterval(() => {
-      setFrame((prev) => (prev + 1) % frameCount);
+      setFrame((prev) => (prev + 1) % FRAME_COUNT);
     }, speed);
     return () => clearInterval(interval);
   }, [profile.frameSpeed, currentBehavior]);
@@ -247,7 +257,7 @@ export default function PetSprite({ stage, hp, maxHp, happiness = 3, streak = 1,
     };
   }, [mood, size]);
 
-  const frameOffset = useMemo(() => `${-(frame * 100 / frameCount)}%`, [frame, frameCount]);
+  
 
   // Behavior-specific motion values
   const getBehaviorAnimation = () => {
@@ -364,32 +374,22 @@ export default function PetSprite({ stage, hp, maxHp, happiness = 3, streak = 1,
             ease: 'easeInOut',
           }}
         >
-          {/* Spritesheet */}
+          {/* Individual frame */}
           <div
             className="w-full h-full overflow-hidden rounded-2xl"
             style={{
               filter: profile.filter,
               transform: facingLeft ? 'scaleX(-1)' : 'scaleX(1)',
               transition: 'transform 0.2s ease',
-              background: 'transparent',
             }}
           >
-            <div
-              style={{
-                width: `${frameCount * 100}%`,
-                height: '100%',
-                transform: `translateX(${frameOffset})`,
-                transition: 'none',
-              }}
-            >
-              <img
-                src={sheetSrc}
-                alt={stage}
-                className="w-full h-full object-cover"
-                style={{ imageRendering: 'auto' }}
-                draggable={false}
-              />
-            </div>
+            <img
+              src={currentFrameSrc}
+              alt={stage}
+              className="w-full h-full object-contain"
+              style={{ imageRendering: 'auto' }}
+              draggable={false}
+            />
           </div>
         </motion.div>
       </motion.div>
