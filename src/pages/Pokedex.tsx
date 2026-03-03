@@ -2,7 +2,8 @@ import { useState, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { getAllPokemon, getPokemonById, getEvolutionChain, RARITY_CONFIG, TYPE_CONFIG, type PokemonSpecies, type PokemonType } from '@/lib/pokemon-registry';
 import { getOwnedSpeciesIds, getSeenSpeciesIds, getCollection, getFriendshipLevel } from '@/lib/collection';
-import { Search, ChevronRight, ArrowLeft, X } from 'lucide-react';
+import { getAllLearnableMoves } from '@/lib/battle-moves';
+import { Search, ChevronRight, ArrowLeft, X, Swords } from 'lucide-react';
 import BottomNav from '@/components/BottomNav';
 import DebugPanel from '@/components/DebugPanel';
 import { useNavigate } from 'react-router-dom';
@@ -338,33 +339,61 @@ export default function Pokedex() {
                     </div>
 
                     <div className="px-6 pb-8 space-y-4">
-                      {/* Description - only for owned */}
-                      {owned && (
-                        <p className="text-xs text-muted-foreground text-center leading-relaxed">
-                          {selectedPokemon.description}
-                        </p>
-                      )}
-
-                      {/* Seen but not owned */}
-                      {seen && !owned && (
-                        <div className="text-center py-4">
-                          <span className="text-3xl mb-2 block">👁</span>
-                          <p className="text-sm text-foreground font-medium">배틀에서 조우한 포켓몬</p>
-                          <p className="text-xs text-muted-foreground mt-1">포획하면 상세 정보를 확인할 수 있습니다</p>
-                          <div className="mt-3 glass-card p-3 inline-block">
-                            <p className="text-[10px] text-muted-foreground">타입: {selectedPokemon.types.map(t => `${TYPE_CONFIG[t].emoji} ${TYPE_CONFIG[t].label}`).join(', ')}</p>
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Unknown */}
-                      {!seen && !owned && (
-                        <div className="text-center py-4">
-                          <span className="text-3xl mb-2 block">🔒</span>
-                          <p className="text-sm text-muted-foreground">아직 발견하지 못한 포켓몬</p>
-                          <p className="text-xs text-muted-foreground/70 mt-1">배틀이나 런닝에서 만나보세요!</p>
-                        </div>
+                       {/* Description - for owned and seen */}
+                       {(owned || seen) && (
+                         <p className="text-xs text-muted-foreground text-center leading-relaxed">
+                           {selectedPokemon.description}
+                         </p>
                        )}
+
+                       {/* Seen but not owned badge */}
+                       {seen && !owned && (
+                         <div className="text-center">
+                           <span className="inline-flex items-center gap-1.5 bg-accent/10 text-accent text-xs px-3 py-1.5 rounded-full font-medium">
+                             👁 배틀에서 조우 — 포획하면 더 많은 정보 확인 가능
+                           </span>
+                         </div>
+                       )}
+
+                       {/* Unknown */}
+                       {!seen && !owned && (
+                         <div className="text-center py-4">
+                           <span className="text-3xl mb-2 block">🔒</span>
+                           <p className="text-sm text-muted-foreground">아직 발견하지 못한 포켓몬</p>
+                           <p className="text-xs text-muted-foreground/70 mt-1">배틀이나 런닝에서 만나보세요!</p>
+                         </div>
+                       )}
+
+                       {/* Learnable Moves */}
+                       {(owned || seen) && (() => {
+                         const moves = getAllLearnableMoves(selectedPokemon.types);
+                         return moves.length > 0 ? (
+                           <div className="glass-card p-3">
+                             <div className="flex items-center gap-1.5 mb-2">
+                               <Swords size={12} className="text-primary" />
+                               <p className="text-[10px] text-muted-foreground font-semibold">습득 가능 기술</p>
+                             </div>
+                             <div className="space-y-1.5">
+                               {moves.map(move => (
+                                 <div key={move.name} className="flex items-center justify-between py-1 px-2 rounded-lg bg-muted/30">
+                                   <div className="flex items-center gap-2">
+                                     <span className="text-sm">{move.emoji}</span>
+                                     <div>
+                                       <span className="text-[11px] font-medium text-foreground">{move.name}</span>
+                                       <span className="text-[9px] text-muted-foreground ml-1.5">{TYPE_CONFIG[move.type]?.emoji} {TYPE_CONFIG[move.type]?.label}</span>
+                                     </div>
+                                   </div>
+                                   <div className="flex items-center gap-3 text-[9px] text-muted-foreground">
+                                     <span>위력 {move.power}</span>
+                                     <span>명중 {move.accuracy}</span>
+                                     <span className="text-primary font-semibold">Lv.{move.learnLevel}</span>
+                                   </div>
+                                 </div>
+                               ))}
+                             </div>
+                           </div>
+                         ) : null;
+                       })()}
 
 
                       {/* Evolution Chain */}
