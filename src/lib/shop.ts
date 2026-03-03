@@ -14,7 +14,7 @@ export interface ShopItem {
   description: string;
   price: number;
   emoji: string;
-  category: 'evolution' | 'boost' | 'food';
+  category: 'evolution' | 'boost' | 'food' | 'heal';
   effect: string;
 }
 
@@ -100,6 +100,24 @@ export const SHOP_ITEMS: ShopItem[] = [
     category: 'food',
     effect: 'food_10',
   },
+  {
+    id: 'potion',
+    name: '상처약',
+    description: '포켓몬 1마리의 HP를 50% 회복',
+    price: 30,
+    emoji: '💊',
+    category: 'heal',
+    effect: 'heal_50',
+  },
+  {
+    id: 'super_potion',
+    name: '좋은상처약',
+    description: '포켓몬 1마리의 HP를 완전 회복',
+    price: 80,
+    emoji: '💊✨',
+    category: 'heal',
+    effect: 'heal_100',
+  },
 ];
 
 // ─── Inventory ───────────────────────────────────────────
@@ -151,7 +169,7 @@ export function purchaseItem(itemId: string): { success: boolean; message: strin
 
 // ─── Use Item on Pokemon ─────────────────────────────────
 
-export function useRareCandy(pokemonUid: string, amount: number = 1): { success: boolean; message: string; newLevel?: number } {
+export function useRareCandy(pokemonUid: string, amount: number = 1): { success: boolean; message: string; newLevel?: number; evolvedSpeciesId?: number } {
   const inv = getInventory();
   const itemId = amount >= 5 ? 'rare_candy_5' : 'rare_candy';
   const count = inv.items[itemId] || 0;
@@ -163,16 +181,35 @@ export function useRareCandy(pokemonUid: string, amount: number = 1): { success:
 
   const levelGain = amount >= 5 ? 5 : 1;
   pokemon.level += levelGain;
+
+  // Check auto-evolution by level
+  let evolvedSpeciesId: number | undefined;
+  const species = getPokemonById(pokemon.speciesId);
+  if (species && species.evolveTo.length > 0 && species.evolveLevel && pokemon.level >= species.evolveLevel) {
+    const nextSpeciesId = species.evolveTo[0];
+    pokemon.speciesId = nextSpeciesId;
+    evolvedSpeciesId = nextSpeciesId;
+    markAsSeen([nextSpeciesId]);
+  }
+
   localStorage.setItem('routinmon-collection', JSON.stringify(col));
 
   inv.items[itemId] = count - 1;
   if (inv.items[itemId] <= 0) delete inv.items[itemId];
   saveInventory(inv);
 
-  const species = getPokemonById(pokemon.speciesId);
+  const currentSpecies = getPokemonById(pokemon.speciesId);
+  if (evolvedSpeciesId) {
+    return {
+      success: true,
+      message: `${pokemon.nickname || species?.name}이(가) ${currentSpecies?.name}(으)로 진화했습니다! ✨`,
+      newLevel: pokemon.level,
+      evolvedSpeciesId,
+    };
+  }
   return {
     success: true,
-    message: `${pokemon.nickname || species?.name}의 레벨이 ${pokemon.level}(으)로 올랐습니다! 🎉`,
+    message: `${pokemon.nickname || currentSpecies?.name}의 레벨이 ${pokemon.level}(으)로 올랐습니다! 🎉`,
     newLevel: pokemon.level,
   };
 }

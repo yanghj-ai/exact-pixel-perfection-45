@@ -45,7 +45,19 @@ export default function Profile() {
 
   const handleResetData = () => {
     if (window.confirm('모든 데이터를 초기화할까요? 이 작업은 되돌릴 수 없습니다.')) {
-      localStorage.removeItem('routinit-profile');
+      const keysToRemove = [
+        'routinit-profile',
+        'routinmon-pet',
+        'routinmon-collection',
+        'routinmon-inventory',
+        'routinmon-pokemon-health',
+        'routinmon-running-stats',
+        'routinmon-attendance',
+        'routinmon-battle-records',
+        'routinmon-legendary-catches',
+        'routinmon-npc-encounter',
+      ];
+      keysToRemove.forEach(key => localStorage.removeItem(key));
       window.location.href = '/';
     }
   };
