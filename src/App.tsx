@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import Onboarding from "./pages/Onboarding";
 import Home from "./pages/Home";
+import RoutineTimer from "./pages/RoutineTimer";
 import Insights from "./pages/Insights";
 import Profile from "./pages/Profile";
 import NotFound from "./pages/NotFound";
@@ -26,6 +27,7 @@ const App = () => (
         <Routes>
           <Route path="/" element={<RootRedirect />} />
           <Route path="/home" element={<Home />} />
+          <Route path="/timer" element={<RoutineTimer />} />
           <Route path="/insights" element={<Insights />} />
           <Route path="/profile" element={<Profile />} />
           <Route path="*" element={<NotFound />} />
