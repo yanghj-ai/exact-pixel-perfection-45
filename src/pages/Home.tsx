@@ -8,13 +8,14 @@ import { checkAndGrantAttendance } from '@/lib/attendance';
 import { getRunningStats, type RunningStats } from '@/lib/running';
 import { getCollection, getCollectionStats, getParty, interactWithPokemon, addCoins } from '@/lib/collection';
 import { getPokemonById, RARITY_CONFIG } from '@/lib/pokemon-registry';
-import { Apple, Play, Target, TrendingUp, Bug, Zap, Egg, BookOpen, Users, Heart, Stethoscope, AlertTriangle } from 'lucide-react';
+import { Apple, Play, Target, TrendingUp, Egg, BookOpen, Users, Heart, Stethoscope, AlertTriangle } from 'lucide-react';
 import { toast } from 'sonner';
 import { getInjuredCount, getAllInjuries, healAllAtCenter } from '@/lib/pokemon-health';
 import BottomNav from '@/components/BottomNav';
 import LevelUpOverlay from '@/components/LevelUpOverlay';
 import AttendanceBonus from '@/components/AttendanceBonus';
 import PetSprite from '@/components/PetSprite';
+import DebugPanel from '@/components/DebugPanel';
 import type { PokemonStage } from '@/lib/pet';
 
 const SPRITE_BASE = 'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/versions/generation-v/black-white/animated';
@@ -25,7 +26,7 @@ export default function Home() {
   const [pet, setPet] = useState<PetState>(getPet());
   const [dialogue, setDialogue] = useState('');
   const [runStats, setRunStats] = useState<RunningStats>(getRunningStats());
-  const [showDebug, setShowDebug] = useState(false);
+  
 
   const collectionStats = getCollectionStats();
   const party = getParty();
@@ -77,25 +78,6 @@ export default function Home() {
 
   const handleAttendanceClose = useCallback(() => setShowAttendance(false), []);
 
-  const handleDebugExp = useCallback((amount: number) => {
-    const { pet: updatedPet, levelUp } = grantRewards(0, amount);
-    setPet(updatedPet);
-    if (levelUp) setLevelUpResult(levelUp);
-    toast(`⚡ EXP +${amount}`);
-  }, []);
-
-  const handleDebugSetLevel = useCallback((targetLevel: number) => {
-    let totalExp = 0;
-    for (let i = 1; i < targetLevel; i++) totalExp += getRequiredExp(i);
-    const currentPet = getPet();
-    let currentTotal = 0;
-    for (let i = 1; i < currentPet.level; i++) currentTotal += getRequiredExp(i);
-    currentTotal += currentPet.exp;
-    const needed = Math.max(1, totalExp - currentTotal);
-    const { pet: updatedPet, levelUp } = grantRewards(5, needed);
-    setPet(updatedPet);
-    if (levelUp) setLevelUpResult(levelUp);
-  }, []);
 
   // Lead pokemon (first in party)
   const leadPokemon = party[0];
@@ -409,32 +391,7 @@ export default function Home() {
           </motion.div>
         )}
 
-        {/* Debug toggle */}
-        <button onClick={() => setShowDebug(v => !v)} className="mt-4 flex items-center gap-1.5 text-xs text-muted-foreground/50 hover:text-muted-foreground transition-colors mx-auto">
-          <Bug size={12} /> 디버그 모드
-        </button>
-        <AnimatePresence>
-          {showDebug && (
-            <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="overflow-hidden">
-              <div className="mt-3 glass-card p-4 space-y-3 border border-destructive/30">
-                <p className="text-xs font-bold text-destructive flex items-center gap-1"><Bug size={12} /> 디버그</p>
-                <p className="text-[10px] text-muted-foreground">Lv.{pet.level} | {pet.stage} | EXP {pet.exp}/{requiredExp} | 도감 {collectionStats.uniqueSpecies}/151</p>
-                <div className="flex gap-2 flex-wrap">
-                  {[50, 200, 500, 1000].map(amount => (
-                    <button key={amount} onClick={() => handleDebugExp(amount)} className="flex items-center gap-1 rounded-lg bg-primary/10 border border-primary/30 px-3 py-1.5 text-xs font-medium text-primary">
-                      <Zap size={10} /> +{amount}
-                    </button>
-                  ))}
-                </div>
-                <div className="flex gap-2 flex-wrap">
-                  <button onClick={() => handleDebugSetLevel(16)} className="rounded-lg bg-destructive/10 border border-destructive/30 px-3 py-1.5 text-xs text-destructive">Lv.16 리자드</button>
-                  <button onClick={() => handleDebugSetLevel(36)} className="rounded-lg bg-destructive/10 border border-destructive/30 px-3 py-1.5 text-xs text-destructive">Lv.36 리자몽</button>
-                </div>
-                <button onClick={() => { localStorage.removeItem('routinmon-pet'); localStorage.removeItem('routinmon-attendance'); localStorage.removeItem('routinmon-running'); localStorage.removeItem('routinmon-collection'); setPet(getPet()); setRunStats(getRunningStats()); toast('🔄 초기화 완료'); }} className="w-full rounded-lg border border-border bg-muted/50 px-3 py-1.5 text-xs text-muted-foreground">🔄 전체 초기화</button>
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
+        <DebugPanel onRefresh={() => { setPet(getPet()); setRunStats(getRunningStats()); }} />
       </div>
 
       <BottomNav />

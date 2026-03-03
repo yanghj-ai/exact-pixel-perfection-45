@@ -6,6 +6,7 @@ import { Switch } from '@/components/ui/switch';
 import { toast } from 'sonner';
 import { Moon, Bell, RotateCcw, HelpCircle } from 'lucide-react';
 import BottomNav from '@/components/BottomNav';
+import DebugPanel from '@/components/DebugPanel';
 
 export default function Settings() {
   const navigate = useNavigate();
@@ -87,6 +88,7 @@ export default function Settings() {
         <p className="text-center text-xs text-muted-foreground mt-6">
           루틴몬 v1.0 · Routinmon 🔥
         </p>
+        <DebugPanel />
       </div>
       <BottomNav />
     </div>

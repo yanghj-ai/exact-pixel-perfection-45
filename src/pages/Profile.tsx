@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { getProfile, saveProfile } from '@/lib/storage';
 import { getLevelInfo, getBadges } from '@/lib/gamification';
 import BottomNav from '@/components/BottomNav';
+import DebugPanel from '@/components/DebugPanel';
 import { motion } from 'framer-motion';
 import { User, Bell, Moon, HelpCircle, RotateCcw } from 'lucide-react';
 import { Switch } from '@/components/ui/switch';
@@ -178,6 +179,7 @@ export default function Profile() {
             <span className="flex-1 text-left">데이터 초기화</span>
           </button>
         </motion.div>
+        <DebugPanel />
       </div>
       <BottomNav />
     </div>

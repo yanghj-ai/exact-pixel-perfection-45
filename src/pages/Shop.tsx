@@ -6,6 +6,7 @@ import { toast } from 'sonner';
 import { getCoins } from '@/lib/collection';
 import { SHOP_ITEMS, purchaseItem, getInventory, type ShopItem } from '@/lib/shop';
 import BottomNav from '@/components/BottomNav';
+import DebugPanel from '@/components/DebugPanel';
 
 type Category = 'all' | 'evolution' | 'boost' | 'food';
 
@@ -167,6 +168,7 @@ export default function Shop() {
             <p>📅 매일 출석하면 추가 보상을 받을 수 있어요</p>
           </div>
         </div>
+        <DebugPanel onRefresh={() => { setCoins(getCoins()); setInventory(getInventory()); }} />
       </div>
 
       <BottomNav />

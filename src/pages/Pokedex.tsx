@@ -4,6 +4,7 @@ import { getAllPokemon, getPokemonById, getEvolutionChain, RARITY_CONFIG, TYPE_C
 import { getOwnedSpeciesIds, getSeenSpeciesIds, getCollection, getFriendshipLevel } from '@/lib/collection';
 import { Search, ChevronRight, ArrowLeft, X } from 'lucide-react';
 import BottomNav from '@/components/BottomNav';
+import DebugPanel from '@/components/DebugPanel';
 import { useNavigate } from 'react-router-dom';
 
 type FilterMode = 'all' | 'owned' | 'seen' | 'missing';
@@ -443,6 +444,9 @@ export default function Pokedex() {
         )}
       </AnimatePresence>
 
+      <div className="mx-auto max-w-md px-5">
+        <DebugPanel />
+      </div>
       <BottomNav />
     </div>
   );
