@@ -261,6 +261,7 @@ export default function Home() {
                 </motion.button>
                 <motion.button
                   whileTap={{ scale: 0.95 }}
+                  onClick={() => navigate('/timer', { state: { routines } })}
                   className="flex flex-[2] items-center justify-center gap-2 rounded-2xl py-3.5 text-sm font-semibold gradient-primary text-primary-foreground"
                 >
                   <Play size={16} />
