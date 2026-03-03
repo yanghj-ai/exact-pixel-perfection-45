@@ -182,6 +182,9 @@ export function useEvolutionStone(pokemonUid: string, stoneItemId: string): { su
   const count = inv.items[stoneItemId] || 0;
   if (count <= 0) return { success: false, message: '진화의 돌이 없습니다!' };
 
+  const item = SHOP_ITEMS.find(i => i.id === stoneItemId);
+  if (!item) return { success: false, message: '아이템을 찾을 수 없습니다' };
+
   const col = getCollection();
   const pokemon = col.owned.find(p => p.uid === pokemonUid);
   if (!pokemon) return { success: false, message: '포켓몬을 찾을 수 없습니다' };
@@ -191,12 +194,50 @@ export function useEvolutionStone(pokemonUid: string, stoneItemId: string): { su
     return { success: false, message: '이 포켓몬은 더 이상 진화할 수 없습니다!' };
   }
 
-  // Check evolution level requirement
-  if (species.evolveLevel && pokemon.level < species.evolveLevel) {
-    return { success: false, message: `진화에 필요한 레벨(Lv.${species.evolveLevel})에 도달하지 못했습니다!` };
+  // Map stone effect to required type for evolution
+  const STONE_TYPE_MAP: Record<string, string> = {
+    evolve_fire: 'fire',
+    evolve_water: 'water',
+    evolve_electric: 'electric',
+    evolve_grass: 'grass',
+    evolve_moon: 'moon', // special
+  };
+
+  const requiredType = STONE_TYPE_MAP[item.effect];
+
+  // Find the correct evolution target based on stone type
+  let evolvedId: number | null = null;
+
+  if (species.evolveTo.length === 1) {
+    // Single evolution path - check if stone type matches pokemon or evolution type
+    const evoSpecies = getPokemonById(species.evolveTo[0]);
+    if (evoSpecies) {
+      const matchesType = evoSpecies.types.includes(requiredType as any) ||
+                         species.types.includes(requiredType as any) ||
+                         requiredType === 'moon'; // moon stone is universal
+      if (matchesType) {
+        evolvedId = species.evolveTo[0];
+      }
+    }
+  } else {
+    // Multiple evolution paths (e.g., Eevee) - find the one matching the stone type
+    for (const evoId of species.evolveTo) {
+      const evoSpecies = getPokemonById(evoId);
+      if (evoSpecies && evoSpecies.types.includes(requiredType as any)) {
+        evolvedId = evoId;
+        break;
+      }
+    }
+    // Moon stone: pick first available evolution if no type match
+    if (!evolvedId && requiredType === 'moon') {
+      evolvedId = species.evolveTo[0];
+    }
   }
 
-  const evolvedId = species.evolveTo[0];
+  if (!evolvedId) {
+    return { success: false, message: `이 포켓몬에게는 ${item.name}을(를) 사용할 수 없습니다!` };
+  }
+
   const evolvedSpecies = getPokemonById(evolvedId);
   if (!evolvedSpecies) return { success: false, message: '진화 대상을 찾을 수 없습니다' };
 
