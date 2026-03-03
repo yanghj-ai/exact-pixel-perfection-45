@@ -30,6 +30,7 @@ export interface CollectionState {
   owned: OwnedPokemon[];
   party: string[]; // uids, max 6
   eggs: PokemonEgg[]; // max 9 eggs
+  seen: number[]; // species ids that have been seen (battle encounter) but not necessarily caught
   coins: number; // Pokécoin for gacha
   totalHatched: number;
   totalEncountered: number;
@@ -44,6 +45,7 @@ function getDefaultState(): CollectionState {
     owned: [],
     party: [],
     eggs: [],
+    seen: [],
     coins: 0,
     totalHatched: 0,
     totalEncountered: 0,
@@ -305,6 +307,27 @@ export function getCollectionStats() {
 
 export function getOwnedSpeciesIds(): Set<number> {
   return new Set(getCollection().owned.map(p => p.speciesId));
+}
+
+export function getSeenSpeciesIds(): Set<number> {
+  const col = getCollection();
+  const seen = new Set(col.seen || []);
+  // Owned pokemon are also considered seen
+  for (const p of col.owned) seen.add(p.speciesId);
+  return seen;
+}
+
+export function markAsSeen(speciesIds: number[]) {
+  const col = getCollection();
+  if (!col.seen) col.seen = [];
+  let changed = false;
+  for (const id of speciesIds) {
+    if (!col.seen.includes(id)) {
+      col.seen.push(id);
+      changed = true;
+    }
+  }
+  if (changed) saveCollection(col);
 }
 
 export function setNickname(uid: string, nickname: string) {

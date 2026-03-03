@@ -1,12 +1,12 @@
 import { useState, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { getAllPokemon, getPokemonById, getEvolutionChain, RARITY_CONFIG, TYPE_CONFIG, type PokemonSpecies, type PokemonType } from '@/lib/pokemon-registry';
-import { getOwnedSpeciesIds, getCollection, getFriendshipLevel } from '@/lib/collection';
+import { getOwnedSpeciesIds, getSeenSpeciesIds, getCollection, getFriendshipLevel } from '@/lib/collection';
 import { Search, ChevronRight, ArrowLeft, X } from 'lucide-react';
 import BottomNav from '@/components/BottomNav';
 import { useNavigate } from 'react-router-dom';
 
-type FilterMode = 'all' | 'owned' | 'missing';
+type FilterMode = 'all' | 'owned' | 'seen' | 'missing';
 
 const TYPE_FILTERS: { type: PokemonType; label: string; emoji: string; bg: string }[] = [
   { type: 'fire', label: '불꽃', emoji: '🔥', bg: 'bg-orange-500/20' },
@@ -35,8 +35,10 @@ export default function Pokedex() {
   const [selectedPokemon, setSelectedPokemon] = useState<PokemonSpecies | null>(null);
 
   const ownedIds = getOwnedSpeciesIds();
+  const seenIds = getSeenSpeciesIds();
   const collection = getCollection();
   const allPokemon = getAllPokemon();
+  const seenOnlyCount = Array.from(seenIds).filter(id => !ownedIds.has(id)).length;
 
   const filteredPokemon = useMemo(() => {
     let list = allPokemon;
@@ -45,13 +47,15 @@ export default function Pokedex() {
       list = list.filter(p => p.name.includes(q) || p.id.toString().includes(q));
     }
     if (filterMode === 'owned') list = list.filter(p => ownedIds.has(p.id));
-    if (filterMode === 'missing') list = list.filter(p => !ownedIds.has(p.id));
+    if (filterMode === 'seen') list = list.filter(p => seenIds.has(p.id) && !ownedIds.has(p.id));
+    if (filterMode === 'missing') list = list.filter(p => !seenIds.has(p.id));
     if (selectedType) list = list.filter(p => p.types.includes(selectedType));
     return list;
-  }, [search, filterMode, selectedType, allPokemon, ownedIds]);
+  }, [search, filterMode, selectedType, allPokemon, ownedIds, seenIds]);
 
   const ownedOfSpecies = (speciesId: number) => collection.owned.filter(p => p.speciesId === speciesId);
   const completionPct = Math.round((ownedIds.size / 151) * 100);
+  const seenPct = Math.round((seenIds.size / 151) * 100);
 
   return (
     <div className="min-h-screen pb-24">
@@ -73,7 +77,7 @@ export default function Pokedex() {
             <div>
               <h1 className="text-xl font-bold text-primary-foreground">포켓몬 도감</h1>
               <p className="text-xs text-primary-foreground/70 mt-0.5">
-                {ownedIds.size} / 151 종 발견
+                🔴 포획 {ownedIds.size} &nbsp;|&nbsp; 👁 발견 {seenIds.size} &nbsp;|&nbsp; 전체 151
               </p>
             </div>
             {/* Completion ring */}
@@ -104,7 +108,12 @@ export default function Pokedex() {
         <div className="px-5 mt-3">
           {/* Ownership filter */}
           <div className="flex gap-1.5 mb-3">
-            {(['all', 'owned', 'missing'] as FilterMode[]).map(mode => (
+            {([
+              { mode: 'all' as FilterMode, label: `전체 (${allPokemon.length})` },
+              { mode: 'owned' as FilterMode, label: `포획 (${ownedIds.size})` },
+              { mode: 'seen' as FilterMode, label: `발견 (${seenOnlyCount})` },
+              { mode: 'missing' as FilterMode, label: `미발견 (${151 - seenIds.size})` },
+            ]).map(({ mode, label }) => (
               <button
                 key={mode}
                 onClick={() => setFilterMode(mode)}
@@ -114,7 +123,7 @@ export default function Pokedex() {
                     : 'bg-card border border-border text-muted-foreground hover:text-foreground'
                 }`}
               >
-                {mode === 'all' ? `전체 (${allPokemon.length})` : mode === 'owned' ? `보유 (${ownedIds.size})` : `미발견 (${151 - ownedIds.size})`}
+                {label}
               </button>
             ))}
           </div>
@@ -151,6 +160,7 @@ export default function Pokedex() {
           <div className="grid grid-cols-3 gap-2">
             {filteredPokemon.map(pokemon => {
               const owned = ownedIds.has(pokemon.id);
+              const seen = seenIds.has(pokemon.id);
               const rarityConf = RARITY_CONFIG[pokemon.rarity];
               return (
                 <motion.button
@@ -160,7 +170,9 @@ export default function Pokedex() {
                   className={`relative rounded-2xl p-2.5 flex flex-col items-center gap-1 transition-all border ${
                     owned
                       ? 'bg-card border-border/50 hover:border-primary/40 hover:shadow-md'
-                      : 'bg-muted/30 border-border/20 opacity-50'
+                      : seen
+                      ? 'bg-card/50 border-border/30 hover:border-primary/20'
+                      : 'bg-muted/30 border-border/20 opacity-40'
                   }`}
                 >
                   {/* Number badge */}
@@ -168,14 +180,11 @@ export default function Pokedex() {
                     #{String(pokemon.id).padStart(3, '0')}
                   </span>
 
-                  {/* Rarity dot */}
-                  {owned && (
-                    <span className={`absolute top-1.5 right-2 w-2 h-2 rounded-full ${rarityConf.bgColor} border ${
-                      pokemon.rarity === 'legendary' ? 'animate-pulse border-amber-400' :
-                      pokemon.rarity === 'epic' ? 'border-purple-400' :
-                      'border-transparent'
-                    }`} />
-                  )}
+                  {/* Status indicator */}
+                  <span className={`absolute top-1.5 right-2 w-2 h-2 rounded-full ${
+                    owned ? `${rarityConf.bgColor} border ${pokemon.rarity === 'legendary' ? 'animate-pulse border-amber-400' : pokemon.rarity === 'epic' ? 'border-purple-400' : 'border-transparent'}`
+                    : seen ? 'bg-accent/60 border border-accent/40' : ''
+                  }`} />
 
                   {/* Sprite */}
                   <div className="w-14 h-14 flex items-center justify-center mt-2">
@@ -184,6 +193,14 @@ export default function Pokedex() {
                         src={pokemon.spriteUrl}
                         alt={pokemon.name}
                         className="w-14 h-14 object-contain"
+                        style={{ imageRendering: 'pixelated' }}
+                        loading="lazy"
+                      />
+                    ) : seen ? (
+                      <img
+                        src={pokemon.spriteUrl}
+                        alt={pokemon.name}
+                        className="w-14 h-14 object-contain brightness-0 opacity-40"
                         style={{ imageRendering: 'pixelated' }}
                         loading="lazy"
                       />
@@ -196,18 +213,23 @@ export default function Pokedex() {
 
                   {/* Name */}
                   <p className="text-[10px] font-medium text-foreground truncate w-full text-center">
-                    {owned ? pokemon.name : '???'}
+                    {owned || seen ? pokemon.name : '???'}
                   </p>
 
-                  {/* Type chips */}
-                  {owned && (
+                  {/* Type chips - show for both owned and seen */}
+                  {(owned || seen) && (
                     <div className="flex gap-0.5">
                       {pokemon.types.map(t => (
-                        <span key={t} className={`${TYPE_CONFIG[t].color} w-3.5 h-3.5 rounded-full flex items-center justify-center`}>
+                        <span key={t} className={`${TYPE_CONFIG[t].color} w-3.5 h-3.5 rounded-full flex items-center justify-center ${!owned ? 'opacity-50' : ''}`}>
                           <span className="text-[7px]">{TYPE_CONFIG[t].emoji}</span>
                         </span>
                       ))}
                     </div>
+                  )}
+
+                  {/* Seen-only badge */}
+                  {seen && !owned && (
+                    <span className="text-[7px] text-accent/70 font-medium">👁 발견</span>
                   )}
                 </motion.button>
               );
@@ -243,6 +265,7 @@ export default function Pokedex() {
             >
               {(() => {
                 const owned = ownedIds.has(selectedPokemon.id);
+                const seen = seenIds.has(selectedPokemon.id);
                 const instances = ownedOfSpecies(selectedPokemon.id);
                 const rarityConf = RARITY_CONFIG[selectedPokemon.rarity];
                 const evoChain = getEvolutionChain(selectedPokemon.id);
@@ -250,24 +273,34 @@ export default function Pokedex() {
                 return (
                   <>
                     {/* Header with type-colored background */}
-                    <div className={`relative px-6 pt-6 pb-12 ${TYPE_CONFIG[selectedPokemon.types[0]].color}`}>
+                    <div className={`relative px-6 pt-6 pb-12 ${(owned || seen) ? TYPE_CONFIG[selectedPokemon.types[0]].color : 'bg-muted'}`}>
                       <button onClick={() => setSelectedPokemon(null)} className="absolute top-4 right-4 w-8 h-8 rounded-full bg-black/30 flex items-center justify-center">
                         <X size={16} className="text-white" />
                       </button>
-                      <p className="text-white/70 text-xs font-mono">#{String(selectedPokemon.id).padStart(3, '0')}</p>
+                      <div className="flex items-center gap-2">
+                        <p className="text-white/70 text-xs font-mono">#{String(selectedPokemon.id).padStart(3, '0')}</p>
+                        {seen && !owned && (
+                          <span className="bg-white/20 text-white text-[9px] px-2 py-0.5 rounded-full">👁 발견만</span>
+                        )}
+                        {owned && (
+                          <span className="bg-white/20 text-white text-[9px] px-2 py-0.5 rounded-full">🔴 포획</span>
+                        )}
+                      </div>
                       <h2 className="text-xl font-bold text-white mt-0.5">
-                        {owned ? selectedPokemon.name : '???'}
+                        {owned || seen ? selectedPokemon.name : '???'}
                       </h2>
-                      {owned && (
-                        <div className="flex gap-1.5 mt-2">
+                      {(owned || seen) && (
+                        <div className="flex gap-1.5 mt-2 flex-wrap">
                           {selectedPokemon.types.map(t => (
                             <span key={t} className="bg-white/20 text-white text-[10px] px-2.5 py-0.5 rounded-full font-medium backdrop-blur-sm">
                               {TYPE_CONFIG[t].emoji} {TYPE_CONFIG[t].label}
                             </span>
                           ))}
-                          <span className="bg-white/20 text-white text-[10px] px-2.5 py-0.5 rounded-full font-medium">
-                            {rarityConf.emoji} {rarityConf.label}
-                          </span>
+                          {owned && (
+                            <span className="bg-white/20 text-white text-[10px] px-2.5 py-0.5 rounded-full font-medium">
+                              {rarityConf.emoji} {rarityConf.label}
+                            </span>
+                          )}
                         </div>
                       )}
                     </div>
@@ -287,6 +320,15 @@ export default function Pokedex() {
                             style={{ imageRendering: 'pixelated' }}
                           />
                         </motion.div>
+                      ) : seen ? (
+                        <div className="w-24 h-24 rounded-2xl bg-card border-2 border-border shadow-xl flex items-center justify-center">
+                          <img
+                            src={selectedPokemon.spriteUrl}
+                            alt={selectedPokemon.name}
+                            className="w-20 h-20 object-contain brightness-0 opacity-50"
+                            style={{ imageRendering: 'pixelated' }}
+                          />
+                        </div>
                       ) : (
                         <div className="w-24 h-24 rounded-2xl bg-muted border-2 border-border shadow-xl flex items-center justify-center">
                           <span className="text-4xl text-muted-foreground/40">?</span>
@@ -295,28 +337,43 @@ export default function Pokedex() {
                     </div>
 
                     <div className="px-6 pb-8 space-y-4">
-                      {/* Description */}
+                      {/* Description - only for owned */}
                       {owned && (
                         <p className="text-xs text-muted-foreground text-center leading-relaxed">
                           {selectedPokemon.description}
                         </p>
                       )}
 
-                      {!owned && (
+                      {/* Seen but not owned */}
+                      {seen && !owned && (
                         <div className="text-center py-4">
-                          <span className="text-3xl mb-2 block">🔒</span>
-                          <p className="text-sm text-muted-foreground">아직 발견하지 못한 포켓몬</p>
-                          <p className="text-xs text-muted-foreground/70 mt-1">런닝이나 알 부화로 만나보세요!</p>
+                          <span className="text-3xl mb-2 block">👁</span>
+                          <p className="text-sm text-foreground font-medium">배틀에서 조우한 포켓몬</p>
+                          <p className="text-xs text-muted-foreground mt-1">포획하면 상세 정보를 확인할 수 있습니다</p>
+                          <div className="mt-3 glass-card p-3 inline-block">
+                            <p className="text-[10px] text-muted-foreground">타입: {selectedPokemon.types.map(t => `${TYPE_CONFIG[t].emoji} ${TYPE_CONFIG[t].label}`).join(', ')}</p>
+                          </div>
                         </div>
                       )}
 
+                      {/* Unknown */}
+                      {!seen && !owned && (
+                        <div className="text-center py-4">
+                          <span className="text-3xl mb-2 block">🔒</span>
+                          <p className="text-sm text-muted-foreground">아직 발견하지 못한 포켓몬</p>
+                          <p className="text-xs text-muted-foreground/70 mt-1">배틀이나 런닝에서 만나보세요!</p>
+                        </div>
+                       )}
+
+
                       {/* Evolution Chain */}
-                      {owned && evoChain.length > 1 && (
+                      {(owned || seen) && evoChain.length > 1 && (
                         <div className="glass-card p-3">
                           <p className="text-[10px] text-muted-foreground font-semibold mb-2">진화 체인</p>
                           <div className="flex items-center justify-center gap-1">
                             {evoChain.map((evo, i) => {
                               const evoOwned = ownedIds.has(evo.id);
+                              const evoSeen = seenIds.has(evo.id);
                               return (
                                 <div key={evo.id} className="flex items-center gap-1">
                                   <button
@@ -327,12 +384,14 @@ export default function Pokedex() {
                                   >
                                     {evoOwned ? (
                                       <img src={evo.spriteUrl} alt={evo.name} className="w-10 h-10 object-contain" style={{ imageRendering: 'pixelated' }} />
+                                    ) : evoSeen ? (
+                                      <img src={evo.spriteUrl} alt={evo.name} className="w-10 h-10 object-contain brightness-0 opacity-40" style={{ imageRendering: 'pixelated' }} />
                                     ) : (
                                       <div className="w-10 h-10 rounded-full bg-muted flex items-center justify-center">
                                         <span className="text-sm text-muted-foreground/40">?</span>
                                       </div>
                                     )}
-                                    <span className="text-[8px] text-muted-foreground mt-0.5">{evoOwned ? evo.name : '???'}</span>
+                                    <span className="text-[8px] text-muted-foreground mt-0.5">{evoOwned || evoSeen ? evo.name : '???'}</span>
                                     {evo.evolveLevel && (
                                       <span className="text-[7px] text-primary/70">Lv.{evo.evolveLevel}</span>
                                     )}

@@ -3,7 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ArrowLeft, Swords, Zap, Shield, Heart, Trophy, Coins } from 'lucide-react';
 import { toast } from 'sonner';
-import { getParty } from '@/lib/collection';
+import { getParty, markAsSeen } from '@/lib/collection';
 import { getPokemonById } from '@/lib/pokemon-registry';
 import {
   buildBattleTeam, buildNpcBattleTeam, simulateBattle,
@@ -53,6 +53,9 @@ export default function BattlePage() {
     const oTeam = buildNpcBattleTeam(npc.teamSpeciesIds, npc.level, npc.friendship);
     setPlayerTeamDisplay(pTeam);
     setOpponentTeamDisplay(oTeam);
+
+    // Mark opponent Pokemon as "seen" in Pokédex
+    markAsSeen(npc.teamSpeciesIds);
 
     setTimeout(() => {
       const result = simulateBattle(pTeam, oTeam);
