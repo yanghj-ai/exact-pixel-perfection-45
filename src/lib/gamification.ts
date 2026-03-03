@@ -58,3 +58,13 @@ export function getBadges(streak: number, totalRoutines: number): Badge[] {
     { id: 'legend', name: '전설', emoji: '🐉', description: '스트릭 100일', unlocked: streak >= 100 },
   ];
 }
+
+/** Compare old and new badges to find newly unlocked ones */
+export function getNewlyUnlockedBadges(
+  oldStreak: number, oldRoutines: number,
+  newStreak: number, newRoutines: number,
+): Badge[] {
+  const oldBadges = getBadges(oldStreak, oldRoutines);
+  const newBadges = getBadges(newStreak, newRoutines);
+  return newBadges.filter((b, i) => b.unlocked && !oldBadges[i].unlocked);
+}

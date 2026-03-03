@@ -3,6 +3,8 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { type RoutineItem } from '@/lib/routines';
 import { getProfile, saveProfile } from '@/lib/storage';
+import { getNewlyUnlockedBadges } from '@/lib/gamification';
+import { toast } from 'sonner';
 import { Pause, Play, Check, SkipForward, Home, PartyPopper } from 'lucide-react';
 
 interface CircularTimerProps {
@@ -103,12 +105,27 @@ export default function RoutineTimer() {
     setAllDone(true);
     const profile = getProfile();
     const today = new Date().toISOString().split('T')[0];
+    const oldStreak = profile.streak;
+    const oldRoutines = Math.max(oldStreak, 0);
+
     if (profile.lastCompletedDate !== today) {
       const yesterday = new Date();
       yesterday.setDate(yesterday.getDate() - 1);
       const yesterdayStr = yesterday.toISOString().split('T')[0];
       const newStreak = profile.lastCompletedDate === yesterdayStr ? profile.streak + 1 : 1;
       saveProfile({ streak: newStreak, lastCompletedDate: today });
+
+      // Check for newly unlocked badges
+      const newRoutines = Math.max(newStreak, 0);
+      const newBadges = getNewlyUnlockedBadges(oldStreak, oldRoutines, newStreak, newRoutines);
+      newBadges.forEach((badge, i) => {
+        setTimeout(() => {
+          toast(`${badge.emoji} 배지 획득!`, {
+            description: `"${badge.name}" — ${badge.description}`,
+            duration: 5000,
+          });
+        }, 1500 + i * 800);
+      });
     }
   };
 
