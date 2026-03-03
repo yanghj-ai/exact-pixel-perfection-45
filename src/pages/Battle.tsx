@@ -19,7 +19,7 @@ import { Button } from '@/components/ui/button';
 import BottomNav from '@/components/BottomNav';
 import { clearPendingEncounter } from '@/lib/npc-encounter';
 
-type BattlePhase = 'select' | 'intro' | 'fighting' | 'result';
+type BattlePhase = 'select' | 'intro' | 'fighting' | 'switching' | 'result';
 
 export default function BattlePage() {
   const navigate = useNavigate();
@@ -48,7 +48,7 @@ export default function BattlePage() {
   const [animatingTurnIdx, setAnimatingTurnIdx] = useState(0);
   const [isAnimating, setIsAnimating] = useState(false);
   const [allTurnLogs, setAllTurnLogs] = useState<BattleTurnLog[]>([]);
-
+  const [switchMessage, setSwitchMessage] = useState<string>('');
   // For rewards
   const [originalPlayerTeam, setOriginalPlayerTeam] = useState<BattlePokemon[]>([]);
   const [originalOpponentTeam, setOriginalOpponentTeam] = useState<BattlePokemon[]>([]);
@@ -101,11 +101,38 @@ export default function BattlePage() {
     if (!isAnimating || currentTurnLogs.length === 0) return;
     if (animatingTurnIdx >= currentTurnLogs.length) {
       // Done animating this turn's logs
+      const lastLog = currentTurnLogs[currentTurnLogs.length - 1];
+      const hasFaint = lastLog?.defenderFainted;
+      
       setTimeout(() => {
         setIsAnimating(false);
-        // Check if battle ended
+        
         if (battleState?.phase === 'finished') {
           finishBattle();
+        } else if (hasFaint && battleState) {
+          // Show switching scene
+          const isPlayerFainted = lastLog.defenderUid.startsWith('npc_') ? false : true;
+          const nextPokemon = isPlayerFainted 
+            ? battleState.playerTeam[battleState.playerIdx] 
+            : battleState.opponentTeam[battleState.opponentIdx];
+          
+          if (nextPokemon) {
+            const faintedName = isPlayerFainted 
+              ? (battleState.playerTeam[battleState.playerIdx - 1]?.nickname || battleState.playerTeam[battleState.playerIdx - 1]?.name)
+              : (battleState.opponentTeam[battleState.opponentIdx - 1]?.nickname || battleState.opponentTeam[battleState.opponentIdx - 1]?.name);
+            const nextName = nextPokemon.nickname || nextPokemon.name;
+            
+            setSwitchMessage(
+              isPlayerFainted 
+                ? `${faintedName}이(가) 쓰러졌다! 가라, ${nextName}!`
+                : `상대의 ${faintedName}이(가) 쓰러졌다! 상대는 ${nextName}을(를) 내보냈다!`
+            );
+            setPhase('switching');
+            setTimeout(() => {
+              setPhase('fighting');
+              setSwitchMessage('');
+            }, 2500);
+          }
         }
       }, 1200);
       return;
@@ -302,6 +329,68 @@ export default function BattlePage() {
     );
   }
 
+  // ─── Switching Phase ────────────────────────
+  if (phase === 'switching' && battleState) {
+    const nextPlayer = battleState.playerTeam[battleState.playerIdx];
+    const nextOpponent = battleState.opponentTeam[battleState.opponentIdx];
+    
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <motion.div
+          initial={{ opacity: 0, scale: 0.9 }}
+          animate={{ opacity: 1, scale: 1 }}
+          className="text-center px-8"
+        >
+          <motion.div
+            initial={{ scale: 0 }}
+            animate={{ scale: 1 }}
+            transition={{ type: 'spring', damping: 15 }}
+            className="mb-4"
+          >
+            {nextPlayer && nextOpponent && (
+              <div className="flex items-center justify-center gap-6">
+                <motion.div
+                  initial={{ x: -50, opacity: 0 }}
+                  animate={{ x: 0, opacity: 1 }}
+                  transition={{ delay: 0.3 }}
+                  className="text-center"
+                >
+                  <img src={nextPlayer.spriteUrl} alt={nextPlayer.name} className="w-20 h-20 object-contain mx-auto" style={{ imageRendering: 'pixelated' }} />
+                  <p className="text-[10px] text-muted-foreground mt-1">{nextPlayer.nickname || nextPlayer.name}</p>
+                </motion.div>
+                <motion.span
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  transition={{ delay: 0.5 }}
+                  className="text-2xl"
+                >
+                  ⚔️
+                </motion.span>
+                <motion.div
+                  initial={{ x: 50, opacity: 0 }}
+                  animate={{ x: 0, opacity: 1 }}
+                  transition={{ delay: 0.3 }}
+                  className="text-center"
+                >
+                  <img src={nextOpponent.spriteUrl} alt={nextOpponent.name} className="w-20 h-20 object-contain mx-auto" style={{ imageRendering: 'pixelated' }} />
+                  <p className="text-[10px] text-muted-foreground mt-1">{nextOpponent.nickname || nextOpponent.name}</p>
+                </motion.div>
+              </div>
+            )}
+          </motion.div>
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.6 }}
+            className="glass-card px-5 py-3 inline-block"
+          >
+            <p className="text-sm font-medium text-foreground">{switchMessage}</p>
+          </motion.div>
+        </motion.div>
+      </div>
+    );
+  }
+
   // ─── Fighting Phase ─────────────────────────
   if (phase === 'fighting' && battleState && selectedNpc) {
     const player = battleState.playerTeam[battleState.playerIdx];
@@ -364,7 +453,15 @@ export default function BattlePage() {
                   transition={{ duration: 0.4 }}
                 />
               </div>
-              <p className="text-[9px] text-muted-foreground mt-0.5">{Math.max(0, opponent?.currentHp || 0)}/{opponent?.maxHp || 0}</p>
+              <div className="flex items-center justify-between mt-0.5">
+                <p className="text-[9px] text-muted-foreground">{Math.max(0, opponent?.currentHp || 0)}/{opponent?.maxHp || 0}</p>
+                {/* Opponent team indicators */}
+                <div className="flex gap-1">
+                  {battleState.opponentTeam.map((p, i) => (
+                    <div key={i} className={`w-2 h-2 rounded-full ${p.currentHp > 0 ? 'bg-destructive' : 'bg-muted'}`} />
+                  ))}
+                </div>
+              </div>
             </div>
           </div>
 
@@ -421,7 +518,15 @@ export default function BattlePage() {
                   transition={{ duration: 0.4 }}
                 />
               </div>
-              <p className="text-[9px] text-muted-foreground mt-0.5">{Math.max(0, player?.currentHp || 0)}/{player?.maxHp || 0}</p>
+              <div className="flex items-center justify-between mt-0.5">
+                {/* Player team indicators */}
+                <div className="flex gap-1">
+                  {battleState.playerTeam.map((p, i) => (
+                    <div key={i} className={`w-2 h-2 rounded-full ${p.currentHp > 0 ? 'bg-primary' : 'bg-muted'}`} />
+                  ))}
+                </div>
+                <p className="text-[9px] text-muted-foreground">{Math.max(0, player?.currentHp || 0)}/{player?.maxHp || 0}</p>
+              </div>
             </div>
           </div>
 
