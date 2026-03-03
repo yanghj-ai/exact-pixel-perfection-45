@@ -102,9 +102,9 @@ const MOOD_CONFIG: Record<PetMood, {
 };
 
 const DISPLAY_SIZES: Record<PokemonStage, number> = {
-  charmander: 180,
-  charmeleon: 200,
-  charizard: 220,
+  charmander: 240,
+  charmeleon: 260,
+  charizard: 280,
 };
 
 interface PetSpriteProps {
