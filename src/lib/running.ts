@@ -1,5 +1,5 @@
 import { grantRewards } from './pet';
-import { addDistanceToEggs } from './collection';
+import { addDistanceToEggs, grantExpToParty, type PartyExpResult } from './collection';
 import type { LevelUpResult } from './pet';
 
 // ─── Types ───────────────────────────────────────────────
@@ -331,7 +331,7 @@ export function getTodayDistance(): number {
 }
 
 /** Debug: add a fake running session with given distance */
-export function debugAddDistance(distanceKm: number): { levelUp: LevelUpResult | null; hatchedEggs: any[] } {
+export function debugAddDistance(distanceKm: number): { levelUp: LevelUpResult | null; hatchedEggs: any[]; partyResults: PartyExpResult[] } {
   const durationSeconds = Math.round(distanceKm * 6 * 60); // ~6 min/km pace
   const paceMinPerKm = 6;
   const calories = estimateCalories(distanceKm, durationSeconds);
@@ -372,5 +372,8 @@ export function debugAddDistance(distanceKm: number): { levelUp: LevelUpResult |
   const expReward = Math.max(5, Math.round(distanceKm * 10));
   const { levelUp } = grantRewards(foodReward, expReward);
 
-  return { levelUp, hatchedEggs };
+  // Grant EXP to party Pokémon
+  const partyResults = grantExpToParty(expReward);
+
+  return { levelUp, hatchedEggs, partyResults };
 }
