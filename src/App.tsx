@@ -12,6 +12,7 @@ import Settings from "./pages/Settings";
 import Party from "./pages/Party";
 import Battle from "./pages/Battle";
 import Ranking from "./pages/Ranking";
+import Shop from "./pages/Shop";
 import NotFound from "./pages/NotFound";
 import { getProfile } from "./lib/storage";
 
@@ -37,6 +38,7 @@ const App = () => (
           <Route path="/party" element={<Party />} />
           <Route path="/battle" element={<Battle />} />
           <Route path="/ranking" element={<Ranking />} />
+          <Route path="/shop" element={<Shop />} />
           <Route path="/settings" element={<Settings />} />
           <Route path="*" element={<NotFound />} />
         </Routes>
