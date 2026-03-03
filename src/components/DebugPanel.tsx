@@ -45,17 +45,26 @@ export default function DebugPanel({ pageInfo, pageActions, onRefresh }: DebugPa
     onRefresh?.();
   };
 
+  const safeAction = (fn: () => void, label: string) => {
+    try {
+      fn();
+    } catch (e) {
+      console.error(`[Debug] ${label} 오류:`, e);
+      toast.error(`오류: ${label} - ${(e as Error).message}`);
+    }
+  };
+
   // ── Common actions ──
   const commonActions: DebugAction[] = [
-    { label: '+50 EXP', emoji: '⚡', color: 'primary', onClick: () => { grantRewards(0, 50); notify('⚡ EXP +50'); } },
-    { label: '+200 EXP', emoji: '⚡', color: 'primary', onClick: () => { grantRewards(0, 200); notify('⚡ EXP +200'); } },
-    { label: '+500 EXP', emoji: '⚡', color: 'primary', onClick: () => { grantRewards(0, 500); notify('⚡ EXP +500'); } },
-    { label: '+100 코인', emoji: '💰', color: 'secondary', onClick: () => { addCoins(100); notify('💰 코인 +100'); } },
-    { label: '+500 코인', emoji: '💰', color: 'secondary', onClick: () => { addCoins(500); notify('💰 코인 +500'); } },
-    { label: '+5 먹이', emoji: '🍎', color: 'heal', onClick: () => { grantRewards(5, 0); notify('🍎 먹이 +5'); } },
-    { label: 'HP 전체 회복', emoji: '💊', color: 'heal', onClick: () => { savePet({ hp: pet.maxHp }); notify('💊 HP 회복 완료'); } },
-    { label: '부상 전체 회복', emoji: '🏥', color: 'heal', onClick: () => { healAllAtCenter(); notify('🏥 부상 회복 완료'); } },
-    { label: 'Lv.16 (리자드)', emoji: '🔥', color: 'destructive', onClick: () => {
+    { label: '+50 EXP', emoji: '⚡', color: 'primary', onClick: () => safeAction(() => { grantRewards(0, 50); notify('⚡ EXP +50'); }, 'EXP+50') },
+    { label: '+200 EXP', emoji: '⚡', color: 'primary', onClick: () => safeAction(() => { grantRewards(0, 200); notify('⚡ EXP +200'); }, 'EXP+200') },
+    { label: '+500 EXP', emoji: '⚡', color: 'primary', onClick: () => safeAction(() => { grantRewards(0, 500); notify('⚡ EXP +500'); }, 'EXP+500') },
+    { label: '+100 코인', emoji: '💰', color: 'secondary', onClick: () => safeAction(() => { addCoins(100); notify('💰 코인 +100'); }, '코인+100') },
+    { label: '+500 코인', emoji: '💰', color: 'secondary', onClick: () => safeAction(() => { addCoins(500); notify('💰 코인 +500'); }, '코인+500') },
+    { label: '+5 먹이', emoji: '🍎', color: 'heal', onClick: () => safeAction(() => { grantRewards(5, 0); notify('🍎 먹이 +5'); }, '먹이+5') },
+    { label: 'HP 전체 회복', emoji: '💊', color: 'heal', onClick: () => safeAction(() => { savePet({ hp: pet.maxHp }); notify('💊 HP 회복 완료'); }, 'HP회복') },
+    { label: '부상 전체 회복', emoji: '🏥', color: 'heal', onClick: () => safeAction(() => { healAllAtCenter(); notify('🏥 부상 회복 완료'); }, '부상회복') },
+    { label: 'Lv.16 (진화1)', emoji: '🔥', color: 'destructive', onClick: () => safeAction(() => {
       let totalExp = 0;
       for (let i = 1; i < 16; i++) totalExp += getRequiredExp(i);
       const currentPet = getPet();
@@ -65,8 +74,8 @@ export default function DebugPanel({ pageInfo, pageActions, onRefresh }: DebugPa
       const needed = Math.max(1, totalExp - currentTotal);
       grantRewards(5, needed);
       notify('🔥 Lv.16 달성!');
-    }},
-    { label: 'Lv.36 (리자몽)', emoji: '🐉', color: 'destructive', onClick: () => {
+    }, 'Lv16') },
+    { label: 'Lv.36 (진화2)', emoji: '🐉', color: 'destructive', onClick: () => safeAction(() => {
       let totalExp = 0;
       for (let i = 1; i < 36; i++) totalExp += getRequiredExp(i);
       const currentPet = getPet();
@@ -76,18 +85,18 @@ export default function DebugPanel({ pageInfo, pageActions, onRefresh }: DebugPa
       const needed = Math.max(1, totalExp - currentTotal);
       grantRewards(5, needed);
       notify('🐉 Lv.36 달성!');
-    }},
-    { label: '알 획득 (일반)', emoji: '🥚', color: 'accent', onClick: () => { createEgg('common'); notify('🥚 일반 알 획득!'); } },
-    { label: '알 획득 (레어)', emoji: '🥚', color: 'accent', onClick: () => { createEgg('rare'); notify('🥚 레어 알 획득!'); } },
-    { label: '랜덤 포켓몬 포획', emoji: '⚡', color: 'accent', onClick: () => {
+    }, 'Lv36') },
+    { label: '알 획득 (일반)', emoji: '🥚', color: 'accent', onClick: () => safeAction(() => { createEgg('common'); notify('🥚 일반 알 획득!'); }, '알-일반') },
+    { label: '알 획득 (레어)', emoji: '🥚', color: 'accent', onClick: () => safeAction(() => { createEgg('rare'); notify('🥚 레어 알 획득!'); }, '알-레어') },
+    { label: '랜덤 포켓몬 포획', emoji: '⚡', color: 'accent', onClick: () => safeAction(() => {
       const id = Math.floor(Math.random() * 151) + 1;
       catchPokemon(id);
       notify(`⚡ #${id} 포획!`);
-    }},
-    { label: '+1km 런닝', emoji: '🏃', color: 'heal', onClick: () => { debugAddDistance(1); notify('🏃 1km 런닝 추가!'); } },
-    { label: '+3km 런닝', emoji: '🏃', color: 'heal', onClick: () => { debugAddDistance(3); notify('🏃 3km 런닝 추가!'); } },
-    { label: '+5km 런닝', emoji: '🏃', color: 'heal', onClick: () => { debugAddDistance(5); notify('🏃 5km 런닝 추가!'); } },
-    { label: '+10km 런닝', emoji: '🏃', color: 'heal', onClick: () => { debugAddDistance(10); notify('🏃 10km 런닝 추가!'); } },
+    }, '랜덤포획') },
+    { label: '+1km 런닝', emoji: '🏃', color: 'heal', onClick: () => safeAction(() => { debugAddDistance(1); notify('🏃 1km 런닝 추가!'); }, '1km런닝') },
+    { label: '+3km 런닝', emoji: '🏃', color: 'heal', onClick: () => safeAction(() => { debugAddDistance(3); notify('🏃 3km 런닝 추가!'); }, '3km런닝') },
+    { label: '+5km 런닝', emoji: '🏃', color: 'heal', onClick: () => safeAction(() => { debugAddDistance(5); notify('🏃 5km 런닝 추가!'); }, '5km런닝') },
+    { label: '+10km 런닝', emoji: '🏃', color: 'heal', onClick: () => safeAction(() => { debugAddDistance(10); notify('🏃 10km 런닝 추가!'); }, '10km런닝') },
   ];
 
   // ── Common info ──
