@@ -12,7 +12,7 @@ import {
   type RunningSession,
   type Challenge,
 } from '@/lib/running';
-import { createEgg, triggerEncounter, catchPokemon, markAsSeen } from '@/lib/collection';
+import { createEgg, triggerEncounter, catchPokemon, markAsSeen, grantExpToParty, type PokemonEgg, type PartyExpResult } from '@/lib/collection';
 import { getPokemonById, RARITY_CONFIG } from '@/lib/pokemon-registry';
 import { getPet, getRequiredExp } from '@/lib/pet';
 import type { LevelUpResult } from '@/lib/pet';
@@ -31,6 +31,7 @@ import BottomNav from '@/components/BottomNav';
 import LevelUpOverlay from '@/components/LevelUpOverlay';
 import RunningMap from '@/components/RunningMap';
 import DebugPanel from '@/components/DebugPanel';
+import EggHatchOverlay from '@/components/EggHatchOverlay';
 
 type RunState = 'idle' | 'running' | 'paused' | 'completed';
 
@@ -54,6 +55,8 @@ export default function RunningPage() {
   const [foodReward, setFoodReward] = useState(0);
   const [expReward, setExpReward] = useState(0);
   const [showMap, setShowMap] = useState(false);
+  const [hatchedEggs, setHatchedEggs] = useState<PokemonEgg[]>([]);
+  const [partyExpResults, setPartyExpResults] = useState<PartyExpResult[]>([]);
 
   // Legendary encounter state
   const [legendaryEncounter, setLegendaryEncounter] = useState<LegendaryEncounter | null>(null);
@@ -253,7 +256,7 @@ export default function RunningPage() {
       setRunState('idle');
       return;
     }
-    const { session, stats, levelUp, completedChallenges: completed, hatchedEggs } = completeRunningSession(routeRef.current, elapsedRef.current);
+    const { session, stats, levelUp, completedChallenges: completed, hatchedEggs: hatched } = completeRunningSession(routeRef.current, elapsedRef.current);
     setCompletedSession(session);
     setLevelUpResult(levelUp);
     setCompletedChallenges(completed);
@@ -262,12 +265,13 @@ export default function RunningPage() {
     setFoodReward(food);
     setExpReward(exp);
 
-    // Show hatched eggs
-    if (hatchedEggs.length > 0) {
-      hatchedEggs.forEach(egg => {
-        const species = getPokemonById(egg.speciesId);
-        if (species) toast(`🥚 알에서 ${species.name}이(가) 태어났다!`);
-      });
+    // Grant EXP to party Pokémon
+    const partyResults = grantExpToParty(exp);
+    setPartyExpResults(partyResults);
+
+    // Set hatched eggs for overlay animation
+    if (hatched.length > 0) {
+      setHatchedEggs(hatched);
     }
 
     // Grant new egg based on distance
@@ -356,6 +360,35 @@ export default function RunningPage() {
             </div>
           </div>
 
+          {/* Party EXP Results */}
+          {partyExpResults.length > 0 && partyExpResults.some(r => r.expGained > 0) && (
+            <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.9 }} className="glass-card p-4 mb-4">
+              <p className="text-xs text-muted-foreground mb-2">⚡ 파티 경험치</p>
+              <div className="space-y-1.5">
+                {partyExpResults.map(r => {
+                  const species = getPokemonById(r.speciesId);
+                  return (
+                    <div key={r.uid} className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        {species && <img src={species.spriteUrl} alt={species.name} className="w-6 h-6 object-contain" style={{ imageRendering: 'pixelated' }} />}
+                        <span className="text-xs font-medium text-foreground">{r.name}</span>
+                      </div>
+                      <div className="flex items-center gap-2 text-[10px]">
+                        <span className="text-secondary font-bold">+{r.expGained} EXP</span>
+                        {r.levelAfter > r.levelBefore && (
+                          <span className="text-primary font-bold">Lv.{r.levelBefore}→{r.levelAfter}</span>
+                        )}
+                        {r.evolved && r.evolvedTo && (
+                          <span className="text-accent font-bold">✨ 진화!</span>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </motion.div>
+          )}
+
           {completedChallenges.length > 0 && (
             <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 1 }} className="glass-card p-4 mb-4 border border-secondary/30">
               <p className="text-xs text-muted-foreground mb-2">🏆 챌린지 달성!</p>
@@ -378,6 +411,11 @@ export default function RunningPage() {
         </div>
         <BottomNav />
         <LevelUpOverlay result={levelUpResult} pet={getPet()} onClose={() => setLevelUpResult(null)} />
+        <AnimatePresence>
+          {hatchedEggs.length > 0 && (
+            <EggHatchOverlay hatchedEggs={hatchedEggs} onComplete={() => setHatchedEggs([])} />
+          )}
+        </AnimatePresence>
       </div>
     );
   }
