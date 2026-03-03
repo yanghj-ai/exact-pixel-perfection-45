@@ -345,11 +345,13 @@ export function grantExpToParty(totalExp: number): PartyExpResult[] {
     let evolved = false;
     let evolvedTo: number | undefined;
     if (species.evolveTo.length > 0 && species.evolveLevel && currentLevel >= species.evolveLevel) {
-      // Evolve to first evolution target
       const nextSpeciesId = species.evolveTo[0];
       pokemon.speciesId = nextSpeciesId;
       evolved = true;
       evolvedTo = nextSpeciesId;
+      // Auto-register evolved species in pokedex
+      if (!col.seen) col.seen = [];
+      if (!col.seen.includes(nextSpeciesId)) col.seen.push(nextSpeciesId);
     }
 
     // Boost friendship slightly on level up
@@ -520,8 +522,14 @@ export function syncStarterWithPet(level: number, _stage: string, petName?: stri
   const starter = col.owned.find(p => p.acquiredMethod === 'starter');
   if (!starter) return null;
 
+  const oldSpeciesId = starter.speciesId;
   starter.level = level;
   starter.speciesId = resolveStarterSpecies(starter.speciesId, level, petName);
+  // Auto-register evolved species in pokedex
+  if (starter.speciesId !== oldSpeciesId) {
+    if (!col.seen) col.seen = [];
+    if (!col.seen.includes(starter.speciesId)) col.seen.push(starter.speciesId);
+  }
   saveCollection(col);
 
   return starter.speciesId;

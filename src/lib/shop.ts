@@ -2,7 +2,7 @@
 // 코인 샵 시스템 — 진화의 돌, 레어캔디 등 아이템
 // ═══════════════════════════════════════════════════════════
 
-import { getCollection, type CollectionState } from './collection';
+import { getCollection, markAsSeen, type CollectionState } from './collection';
 import { getPet, savePet, type PetState } from './pet';
 import { getPokemonById } from './pokemon-registry';
 
@@ -243,6 +243,8 @@ export function useEvolutionStone(pokemonUid: string, stoneItemId: string): { su
 
   // Evolve!
   pokemon.speciesId = evolvedId;
+  // Auto-register evolved species in pokedex
+  markAsSeen([evolvedId]);
   localStorage.setItem('routinmon-collection', JSON.stringify(col));
 
   inv.items[stoneItemId] = count - 1;
