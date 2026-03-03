@@ -2,10 +2,10 @@ import { useEffect, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { getProfile } from '@/lib/storage';
-import { getPet, savePet, applyHpDecay, feedPet, interactPet, getRandomDialogue, getStageInfo, getRequiredExp } from '@/lib/pet';
+import { getPet, savePet, applyHpDecay, feedPet, interactPet, getRandomDialogue, getStageInfo, getRequiredExp, grantRewards } from '@/lib/pet';
 import type { PetState, LevelUpResult } from '@/lib/pet';
 import { checkAndGrantAttendance } from '@/lib/attendance';
-import { Flame, Apple, Handshake, Dumbbell } from 'lucide-react';
+import { Flame, Apple, Handshake, Dumbbell, Zap, Bug } from 'lucide-react';
 import { toast } from 'sonner';
 import PetSprite from '@/components/PetSprite';
 import BottomNav from '@/components/BottomNav';
@@ -18,6 +18,7 @@ export default function Home() {
   const [pet, setPet] = useState<PetState>(getPet());
   const [dialogue, setDialogue] = useState('');
   const [hearts, setHearts] = useState<number[]>([]);
+  const [showDebug, setShowDebug] = useState(false);
 
   // Overlays
   const [levelUpResult, setLevelUpResult] = useState<LevelUpResult | null>(null);
@@ -103,6 +104,37 @@ export default function Home() {
       setTimeout(() => {}, 300);
     }
   }, [levelUpResult]);
+
+  const handleDebugExp = useCallback((amount: number) => {
+    const { pet: updatedPet, levelUp } = grantRewards(0, amount);
+    setPet(updatedPet);
+    if (levelUp) {
+      setLevelUpResult(levelUp);
+    }
+    toast(`⚡ EXP +${amount}`, {
+      description: `Lv.${updatedPet.level} | ${updatedPet.exp}/${getRequiredExp(updatedPet.level)} EXP`,
+    });
+  }, []);
+
+  const handleDebugSetLevel = useCallback((targetLevel: number) => {
+    // Calculate total EXP needed to reach target level
+    let totalExp = 0;
+    for (let i = 1; i < targetLevel; i++) {
+      totalExp += getRequiredExp(i);
+    }
+    const currentPet = getPet();
+    let currentTotal = 0;
+    for (let i = 1; i < currentPet.level; i++) {
+      currentTotal += getRequiredExp(i);
+    }
+    currentTotal += currentPet.exp;
+    const needed = Math.max(1, totalExp - currentTotal);
+    const { pet: updatedPet, levelUp } = grantRewards(5, needed);
+    setPet(updatedPet);
+    if (levelUp) {
+      setLevelUpResult(levelUp);
+    }
+  }, []);
 
   const happinessHearts = Math.round(pet.happiness);
 
@@ -282,6 +314,89 @@ export default function Home() {
             })}
           </div>
         </motion.div>
+        {/* Debug toggle */}
+        <button
+          onClick={() => setShowDebug((v) => !v)}
+          className="mt-4 flex items-center gap-1.5 text-xs text-muted-foreground/50 hover:text-muted-foreground transition-colors mx-auto"
+        >
+          <Bug size={12} />
+          디버그 모드
+        </button>
+
+        {/* Debug panel */}
+        <AnimatePresence>
+          {showDebug && (
+            <motion.div
+              initial={{ height: 0, opacity: 0 }}
+              animate={{ height: 'auto', opacity: 1 }}
+              exit={{ height: 0, opacity: 0 }}
+              className="overflow-hidden"
+            >
+              <div className="mt-3 glass-card p-4 space-y-3 border border-destructive/30">
+                <p className="text-xs font-bold text-destructive flex items-center gap-1">
+                  <Bug size={12} /> 디버그 패널 (테스트용)
+                </p>
+                <p className="text-[10px] text-muted-foreground">
+                  현재: Lv.{pet.level} | {pet.stage} | EXP {pet.exp}/{getRequiredExp(pet.level)}
+                </p>
+                <div className="space-y-2">
+                  <p className="text-[10px] text-muted-foreground font-medium">EXP 추가:</p>
+                  <div className="flex gap-2 flex-wrap">
+                    {[50, 200, 500, 1000].map((amount) => (
+                      <button
+                        key={amount}
+                        onClick={() => handleDebugExp(amount)}
+                        className="flex items-center gap-1 rounded-lg bg-primary/10 border border-primary/30 px-3 py-1.5 text-xs font-medium text-primary hover:bg-primary/20 transition-colors"
+                      >
+                        <Zap size={10} /> +{amount}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <p className="text-[10px] text-muted-foreground font-medium">빠른 진화 (레벨 점프):</p>
+                  <div className="flex gap-2 flex-wrap">
+                    <button
+                      onClick={() => handleDebugSetLevel(15)}
+                      className="rounded-lg bg-secondary/10 border border-secondary/30 px-3 py-1.5 text-xs font-medium text-secondary hover:bg-secondary/20 transition-colors"
+                    >
+                      Lv.15 (진화 직전)
+                    </button>
+                    <button
+                      onClick={() => handleDebugSetLevel(16)}
+                      className="rounded-lg bg-destructive/10 border border-destructive/30 px-3 py-1.5 text-xs font-medium text-destructive hover:bg-destructive/20 transition-colors"
+                    >
+                      Lv.16 → 리자드 진화!
+                    </button>
+                    <button
+                      onClick={() => handleDebugSetLevel(35)}
+                      className="rounded-lg bg-secondary/10 border border-secondary/30 px-3 py-1.5 text-xs font-medium text-secondary hover:bg-secondary/20 transition-colors"
+                    >
+                      Lv.35 (진화 직전)
+                    </button>
+                    <button
+                      onClick={() => handleDebugSetLevel(36)}
+                      className="rounded-lg bg-destructive/10 border border-destructive/30 px-3 py-1.5 text-xs font-medium text-destructive hover:bg-destructive/20 transition-colors"
+                    >
+                      Lv.36 → 리자몽 진화!
+                    </button>
+                  </div>
+                </div>
+                <button
+                  onClick={() => {
+                    localStorage.removeItem('routinmon-pet');
+                    localStorage.removeItem('routinmon-attendance');
+                    setPet(getPet());
+                    toast('🔄 펫 초기화 완료');
+                  }}
+                  className="w-full rounded-lg border border-border bg-muted/50 px-3 py-1.5 text-xs text-muted-foreground hover:bg-muted transition-colors"
+                >
+                  🔄 펫 데이터 초기화
+                </button>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
 
       <BottomNav />
