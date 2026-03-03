@@ -16,6 +16,8 @@ import LevelUpOverlay from '@/components/LevelUpOverlay';
 import AttendanceBonus from '@/components/AttendanceBonus';
 import PetSprite from '@/components/PetSprite';
 import DebugPanel from '@/components/DebugPanel';
+import EggHatchOverlay from '@/components/EggHatchOverlay';
+import type { PokemonEgg } from '@/lib/collection';
 import type { PokemonStage } from '@/lib/pet';
 
 const SPRITE_BASE = 'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/versions/generation-v/black-white/animated';
@@ -37,6 +39,7 @@ export default function Home() {
   const [levelUpResult, setLevelUpResult] = useState<LevelUpResult | null>(null);
   const [showAttendance, setShowAttendance] = useState(false);
   const [attendanceData, setAttendanceData] = useState<{ consecutiveDays: number; bonusFood: number; bonusExp: number } | null>(null);
+  const [hatchedEggs, setHatchedEggs] = useState<PokemonEgg[]>([]);
 
   useEffect(() => {
     if (!profile.onboardingComplete) {
@@ -413,7 +416,10 @@ export default function Home() {
           </motion.div>
         )}
 
-        <DebugPanel onRefresh={() => { setPet(getPet()); setRunStats(getRunningStats()); }} />
+        <DebugPanel
+          onRefresh={() => { setPet(getPet()); setRunStats(getRunningStats()); }}
+          onEggHatch={(eggs) => setHatchedEggs(eggs)}
+        />
       </div>
 
       <BottomNav />
@@ -421,6 +427,14 @@ export default function Home() {
       {attendanceData && (
         <AttendanceBonus show={showAttendance} consecutiveDays={attendanceData.consecutiveDays} bonusFood={attendanceData.bonusFood} bonusExp={attendanceData.bonusExp} onClose={handleAttendanceClose} />
       )}
+      <AnimatePresence>
+        {hatchedEggs.length > 0 && (
+          <EggHatchOverlay
+            hatchedEggs={hatchedEggs}
+            onComplete={() => { setHatchedEggs([]); setPet(getPet()); setRunStats(getRunningStats()); }}
+          />
+        )}
+      </AnimatePresence>
     </div>
   );
 }
