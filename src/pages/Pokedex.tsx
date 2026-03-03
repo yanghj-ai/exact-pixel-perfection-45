@@ -59,7 +59,7 @@ export default function Pokedex() {
   const seenPct = Math.round((seenIds.size / 151) * 100);
 
   return (
-    <div className="min-h-screen pb-24">
+    <div className="min-h-screen pb-28">
       <div className="mx-auto max-w-md px-0">
         {/* ── Pokédex Shell Header ── */}
         <div className="bg-primary px-5 pt-6 pb-4 relative overflow-hidden">
@@ -444,7 +444,7 @@ export default function Pokedex() {
         )}
       </AnimatePresence>
 
-      <div className="mx-auto max-w-md px-5">
+      <div className="mx-auto max-w-md px-5 pb-4">
         <DebugPanel />
       </div>
       <BottomNav />

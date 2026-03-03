@@ -342,3 +342,37 @@ export function setNickname(uid: string, nickname: string) {
 export function resetCollection() {
   localStorage.removeItem(STORAGE_KEY);
 }
+
+// ─── Pet ↔ Collection Sync ──────────────────────────────
+// The "pet" system tracks the main starter's level/stage,
+// but the collection keeps its own level/speciesId.
+// This function syncs them so battles use the correct data.
+
+/** Map pet stage to species id */
+function stageToSpeciesId(stage: string): number {
+  switch (stage) {
+    case 'charmeleon': return 5;
+    case 'charizard': return 6;
+    default: return 4; // charmander
+  }
+}
+
+/**
+ * Sync pet level & evolution to the starter pokemon in the collection.
+ * Called after every grantRewards / level-up.
+ */
+export function syncStarterWithPet(level: number, stage: string) {
+  const col = getCollection();
+  const starter = col.owned.find(p => p.acquiredMethod === 'starter');
+  if (!starter) return;
+
+  const newSpeciesId = stageToSpeciesId(stage);
+  starter.level = level;
+
+  // If evolved, update species id and mark new species as owned
+  if (starter.speciesId !== newSpeciesId) {
+    starter.speciesId = newSpeciesId;
+  }
+
+  saveCollection(col);
+}
