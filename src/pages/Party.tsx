@@ -8,7 +8,7 @@ import {
 } from '@/lib/collection';
 import { getPet } from '@/lib/pet';
 import { getPokemonById, RARITY_CONFIG } from '@/lib/pokemon-registry';
-import { ArrowLeft, Heart, Apple, Edit3, ArrowRightLeft, X, Check, Sparkles, Crown, ArrowUp, ArrowDown, Package } from 'lucide-react';
+import { ArrowLeft, Heart, Apple, Edit3, ArrowRightLeft, X, Check, Sparkles, Crown, ArrowUp, ArrowDown, Package, ChevronDown } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -41,6 +41,8 @@ export default function Party() {
   const [nicknameValue, setNicknameValue] = useState('');
   // Interaction cooldown
   const [interactCooldown, setInteractCooldown] = useState<Set<string>>(new Set());
+  // Item menu for leader
+  const [showItemMenu, setShowItemMenu] = useState(false);
 
   const handleInteract = useCallback((uid: string) => {
     if (interactCooldown.has(uid)) {
@@ -146,7 +148,19 @@ export default function Party() {
                 <motion.button
                   key={i}
                   whileTap={{ scale: 0.95 }}
-                  onClick={() => member && setSelected(member)}
+                  onClick={() => {
+                    if (member) {
+                      if (i === 0) {
+                        // Already leader → open detail
+                        setSelected(member);
+                      } else {
+                        // Set as leader
+                        setAsLeader(member.uid);
+                        toast('🌟 리더로 지정했어요!');
+                        refresh();
+                      }
+                    }
+                  }}
                   className={`relative glass-card p-3 flex flex-col items-center gap-1 min-h-[120px] justify-center transition-colors ${
                     member ? 'hover:border-primary/40' : ''
                   }`}
@@ -354,15 +368,27 @@ export default function Party() {
                     <Sparkles size={16} className="text-primary" />
                     교감
                   </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => handleFeed(selected.uid)}
-                    className="flex flex-col items-center gap-1 h-auto py-3 text-xs"
-                  >
-                    <Apple size={16} className="text-heal" />
-                    먹이 ({pet.foodCount})
-                  </Button>
+                  {selected.isInParty && party[0]?.uid === selected.uid ? (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setShowItemMenu(true)}
+                      className="flex flex-col items-center gap-1 h-auto py-3 text-xs"
+                    >
+                      <Package size={16} className="text-heal" />
+                      아이템
+                    </Button>
+                  ) : (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handleFeed(selected.uid)}
+                      className="flex flex-col items-center gap-1 h-auto py-3 text-xs"
+                    >
+                      <Apple size={16} className="text-heal" />
+                      먹이 ({pet.foodCount})
+                    </Button>
+                  )}
                   <Button
                     variant="outline"
                     size="sm"
@@ -511,6 +537,92 @@ export default function Party() {
               </div>
             </>
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Item Menu Modal (Leader only) */}
+      <Dialog open={showItemMenu} onOpenChange={setShowItemMenu}>
+        <DialogContent className="max-w-[360px] bg-card border-border/60">
+          <DialogHeader>
+            <DialogTitle className="text-base">아이템 사용</DialogTitle>
+            <DialogDescription className="text-xs">
+              {selected ? `${selected.nickname || getPokemonById(selected.speciesId)?.name}에게 사용할 아이템을 선택하세요` : '아이템 선택'}
+            </DialogDescription>
+          </DialogHeader>
+          {selected && (() => {
+            const inv = getInventory();
+            // Food items
+            const foodAvailable = pet.foodCount > 0;
+            // Inventory items (boost + evolution)
+            const usableItems = Object.entries(inv.items)
+              .filter(([, count]) => count > 0)
+              .map(([itemId, count]) => ({ item: SHOP_ITEMS.find(i => i.id === itemId)!, count }))
+              .filter(({ item }) => item);
+
+            return (
+              <div className="space-y-3 py-2">
+                {/* Food */}
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    handleFeed(selected.uid);
+                    if (pet.foodCount > 1) return; // keep open if more food
+                    setShowItemMenu(false);
+                  }}
+                  disabled={!foodAvailable}
+                  className="w-full flex items-center gap-3 h-auto py-3 px-4 justify-start"
+                >
+                  <span className="text-xl">🍎</span>
+                  <div className="text-left flex-1">
+                    <p className="text-sm font-semibold">먹이</p>
+                    <p className="text-xs text-muted-foreground">친밀도를 올려줍니다</p>
+                  </div>
+                  <span className="text-xs text-muted-foreground">×{pet.foodCount}</span>
+                </Button>
+
+                {/* Inventory items */}
+                {usableItems.map(({ item, count }) => (
+                  <Button
+                    key={item.id}
+                    variant="outline"
+                    onClick={() => {
+                      let result;
+                      if (item.effect === 'level_up' || item.effect === 'level_up_5') {
+                        result = useRareCandy(selected.uid, item.effect === 'level_up_5' ? 5 : 1);
+                      } else if (item.effect.startsWith('evolve_')) {
+                        result = useEvolutionStone(selected.uid, item.id);
+                      } else {
+                        return;
+                      }
+                      if (result.success) {
+                        toast.success(result.message);
+                        const updated = getCollection().owned.find(p => p.uid === selected.uid);
+                        if (updated) setSelected(updated);
+                        refresh();
+                      } else {
+                        toast.error(result.message);
+                      }
+                    }}
+                    className="w-full flex items-center gap-3 h-auto py-3 px-4 justify-start"
+                  >
+                    <span className="text-xl">{item.emoji}</span>
+                    <div className="text-left flex-1">
+                      <p className="text-sm font-semibold">{item.name}</p>
+                      <p className="text-xs text-muted-foreground">{item.description}</p>
+                    </div>
+                    <span className="text-xs text-muted-foreground">×{count}</span>
+                  </Button>
+                ))}
+
+                {usableItems.length === 0 && !foodAvailable && (
+                  <div className="text-center py-4">
+                    <p className="text-sm text-muted-foreground">사용 가능한 아이템이 없습니다</p>
+                    <p className="text-xs text-muted-foreground/60 mt-1">상점에서 아이템을 구매하세요</p>
+                  </div>
+                )}
+              </div>
+            );
+          })()}
         </DialogContent>
       </Dialog>
 
