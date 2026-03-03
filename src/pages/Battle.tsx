@@ -3,7 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ArrowLeft, Swords, Zap, Shield, Heart, Trophy, Coins, Sparkles, AlertTriangle } from 'lucide-react';
 import { toast } from 'sonner';
-import { getParty, markAsSeen, addCoins } from '@/lib/collection';
+import { getParty, markAsSeen, addCoins, grantExpToParty } from '@/lib/collection';
 import { getPokemonById } from '@/lib/pokemon-registry';
 import {
   buildBattleTeam, buildNpcBattleTeam, simulateBattle,
@@ -131,16 +131,16 @@ export default function BattlePage() {
             setTimeout(() => {
               setPhase('fighting');
               setSwitchMessage('');
-            }, 2500);
+            }, 3000);
           }
         }
-      }, 1200);
+      }, 1500);
       return;
     }
 
     const timer = setTimeout(() => {
       setAnimatingTurnIdx(i => i + 1);
-    }, 1500);
+    }, 1800);
     return () => clearTimeout(timer);
   }, [isAnimating, animatingTurnIdx, currentTurnLogs]);
 
@@ -165,10 +165,26 @@ export default function BattlePage() {
 
     if (won) {
       addCoins(battleRewards.coins);
+      // Grant EXP to pet (food + pet level)
       grantRewards(
         battleRewards.bonusItems.filter(i => i.name === '먹이').reduce((s, i) => s + i.count, 0),
         battleRewards.exp
       );
+      // Grant EXP to party pokemon (actual level-ups)
+      const expResults = grantExpToParty(battleRewards.exp);
+      if (expResults.some(r => r.evolved)) {
+        const evolved = expResults.filter(r => r.evolved);
+        for (const e of evolved) {
+          const newSpecies = getPokemonById(e.evolvedTo!);
+          toast.success(`${e.name}이(가) ${newSpecies?.name}(으)로 진화했습니다!`, { icon: '✨', duration: 4000 });
+        }
+      }
+      const leveledUp = expResults.filter(r => r.levelAfter > r.levelBefore);
+      if (leveledUp.length > 0) {
+        for (const r of leveledUp) {
+          toast(`${r.name} Lv.${r.levelBefore} → Lv.${r.levelAfter}`, { icon: '⬆️', duration: 3000 });
+        }
+      }
     } else {
       if (battleRewards.coinsLost > 0) {
         addCoins(-battleRewards.coinsLost);
