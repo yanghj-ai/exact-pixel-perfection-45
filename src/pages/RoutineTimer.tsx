@@ -207,7 +207,7 @@ export default function RoutineTimer() {
             transition={{ delay: 0.2 }}
             className="mb-4"
           >
-            <PetSprite stage={currentPet.stage} hp={currentPet.hp} maxHp={currentPet.maxHp} />
+            <PetSprite stage={currentPet.stage} hp={currentPet.hp} maxHp={currentPet.maxHp} happiness={currentPet.happiness} />
           </motion.div>
 
           <motion.h1
@@ -412,7 +412,7 @@ export default function RoutineTimer() {
       <div className="relative flex flex-col items-center">
         {/* Mini pet above timer */}
         <div className="mb-2">
-          <PetSprite stage={pet.stage} hp={pet.hp} maxHp={pet.maxHp} size="small" />
+          <PetSprite stage={pet.stage} hp={pet.hp} maxHp={pet.maxHp} happiness={pet.happiness} size="small" />
         </div>
 
         <CircularTimer remaining={remaining} total={totalSeconds} />
