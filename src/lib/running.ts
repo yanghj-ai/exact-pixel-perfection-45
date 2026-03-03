@@ -1,4 +1,5 @@
 import { grantRewards } from './pet';
+import { addDistanceToEggs } from './collection';
 import type { LevelUpResult } from './pet';
 
 // ─── Types ───────────────────────────────────────────────
@@ -210,7 +211,7 @@ export function estimateCalories(distanceKm: number, durationSeconds: number): n
 export function completeRunningSession(
   route: GeoPoint[],
   durationSeconds: number,
-): { session: RunningSession; stats: RunningStats; levelUp: LevelUpResult | null; completedChallenges: Challenge[] } {
+): { session: RunningSession; stats: RunningStats; levelUp: LevelUpResult | null; completedChallenges: Challenge[]; hatchedEggs: any[] } {
   const distanceKm = Math.round(calculateDistance(route) * 100) / 100;
   const paceMinPerKm = durationSeconds > 0 && distanceKm > 0 ? (durationSeconds / 60) / distanceKm : 0;
   const calories = estimateCalories(distanceKm, durationSeconds);
@@ -296,10 +297,15 @@ export function completeRunningSession(
   
   saveRunningStats(stats);
   
-  // Grant rewards to pet
-  const { levelUp } = grantRewards(foodReward, expReward);
+  // Hatch eggs with distance
+  const hatchedEggs = addDistanceToEggs(distanceKm);
   
-  return { session, stats, levelUp, completedChallenges };
+  // Grant rewards to pet
+  const foodReward2 = Math.max(1, Math.floor(distanceKm));
+  const expReward2 = Math.max(5, Math.round(distanceKm * 10));
+  const { levelUp } = grantRewards(foodReward2, expReward2);
+  
+  return { session, stats, levelUp, completedChallenges, hatchedEggs };
 }
 
 // ─── Goal Management ─────────────────────────────────────
@@ -325,7 +331,7 @@ export function getTodayDistance(): number {
 }
 
 /** Debug: add a fake running session with given distance */
-export function debugAddDistance(distanceKm: number): { levelUp: LevelUpResult | null } {
+export function debugAddDistance(distanceKm: number): { levelUp: LevelUpResult | null; hatchedEggs: any[] } {
   const durationSeconds = Math.round(distanceKm * 6 * 60); // ~6 min/km pace
   const paceMinPerKm = 6;
   const calories = estimateCalories(distanceKm, durationSeconds);
@@ -359,9 +365,12 @@ export function debugAddDistance(distanceKm: number): { levelUp: LevelUpResult |
 
   saveRunningStats(stats);
 
+  // Hatch eggs with distance
+  const hatchedEggs = addDistanceToEggs(distanceKm);
+
   const foodReward = Math.max(1, Math.floor(distanceKm));
   const expReward = Math.max(5, Math.round(distanceKm * 10));
   const { levelUp } = grantRewards(foodReward, expReward);
 
-  return { levelUp };
+  return { levelUp, hatchedEggs };
 }
