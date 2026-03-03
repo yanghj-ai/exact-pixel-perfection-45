@@ -1,19 +1,27 @@
-import { motion } from 'framer-motion';
+import { useEffect, useState, useMemo } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import type { PokemonStage } from '@/lib/pet';
-import charmanderImg from '@/assets/pet-charmander.png';
-import charmeleonImg from '@/assets/pet-charmeleon.png';
-import charizardImg from '@/assets/pet-charizard.png';
+import charmanderSheet from '@/assets/charmander-spritesheet.png';
+import charmeleonSheet from '@/assets/charmeleon-spritesheet.png';
+import charizardSheet from '@/assets/charizard-spritesheet.png';
 
-const PET_IMAGES: Record<PokemonStage, string> = {
-  charmander: charmanderImg,
-  charmeleon: charmeleonImg,
-  charizard: charizardImg,
+const SHEETS: Record<PokemonStage, string> = {
+  charmander: charmanderSheet,
+  charmeleon: charmeleonSheet,
+  charizard: charizardSheet,
 };
 
-const PET_SIZES: Record<PokemonStage, number> = {
-  charmander: 160,
-  charmeleon: 180,
-  charizard: 200,
+const FRAME_COUNT = 4;
+const FRAME_SPEEDS: Record<PokemonStage, number> = {
+  charmander: 350, // ms per frame
+  charmeleon: 300,
+  charizard: 280,
+};
+
+const DISPLAY_SIZES: Record<PokemonStage, number> = {
+  charmander: 180,
+  charmeleon: 200,
+  charizard: 220,
 };
 
 interface PetSpriteProps {
@@ -21,96 +29,124 @@ interface PetSpriteProps {
   hp: number;
   maxHp: number;
   className?: string;
+  size?: 'normal' | 'small';
 }
 
-export default function PetSprite({ stage, hp, maxHp, className = '' }: PetSpriteProps) {
+export default function PetSprite({ stage, hp, maxHp, className = '', size = 'normal' }: PetSpriteProps) {
+  const [frame, setFrame] = useState(0);
   const isWeak = hp <= 0;
-  const size = PET_SIZES[stage];
+  const displaySize = size === 'small' ? 60 : DISPLAY_SIZES[stage];
+  const speed = isWeak ? 800 : FRAME_SPEEDS[stage];
+
+  // Sprite frame animation loop
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setFrame((prev) => (prev + 1) % FRAME_COUNT);
+    }, speed);
+    return () => clearInterval(interval);
+  }, [speed]);
+
+  // Pre-calculate frame position (each frame is 25% of the sheet width)
+  const frameOffset = useMemo(() => `${-(frame * 100 / FRAME_COUNT)}%`, [frame]);
 
   return (
-    <div className={`relative flex items-center justify-center ${className}`}>
-      {/* Glow ring behind pet */}
+    <div className={`relative flex flex-col items-center justify-center ${className}`}>
+      {/* Ambient glow */}
+      {!isWeak && (
+        <motion.div
+          className="absolute rounded-full"
+          style={{
+            width: displaySize + 30,
+            height: displaySize + 30,
+            background: `radial-gradient(circle, hsl(var(--flame) / 0.15), transparent 70%)`,
+          }}
+          animate={{
+            scale: [1, 1.08, 1],
+            opacity: [0.6, 1, 0.6],
+          }}
+          transition={{ duration: 2, repeat: Infinity, ease: 'easeInOut' }}
+        />
+      )}
+
+      {/* Ground shadow */}
       <motion.div
-        className="absolute rounded-full gradient-primary opacity-20"
-        style={{ width: size + 40, height: size + 40 }}
-        animate={{
-          scale: [1, 1.05, 1],
-          opacity: [0.15, 0.25, 0.15],
+        className="absolute rounded-[50%] bg-foreground/10"
+        style={{
+          width: displaySize * 0.4,
+          height: 8,
+          bottom: size === 'small' ? -2 : 0,
         }}
-        transition={{ duration: 2.5, repeat: Infinity, ease: 'easeInOut' }}
+        animate={{
+          scaleX: [1, 0.85, 1],
+          opacity: [0.25, 0.12, 0.25],
+        }}
+        transition={{ duration: 1.5, repeat: Infinity, ease: 'easeInOut' }}
       />
 
-      {/* Shadow */}
+      {/* Sprite container with bounce */}
       <motion.div
-        className="absolute bottom-0 rounded-full bg-foreground/10"
-        style={{ width: size * 0.5, height: 12 }}
-        animate={{
-          scaleX: [1, 0.9, 1],
-          opacity: [0.3, 0.15, 0.3],
-        }}
-        transition={{ duration: 2, repeat: Infinity, ease: 'easeInOut' }}
-      />
-
-      {/* Pet image with breathing + bounce animation */}
-      <motion.div
-        style={{ width: size, height: size }}
+        style={{ width: displaySize, height: displaySize }}
         animate={
           isWeak
-            ? { y: [0, 2, 0], opacity: [0.5, 0.6, 0.5] }
-            : {
-                y: [0, -8, 0],
-                rotate: [0, -1, 0, 1, 0],
-              }
+            ? { y: [0, 2, 0], opacity: [0.45, 0.55, 0.45] }
+            : { y: [0, -6, 0] }
         }
         transition={{
-          duration: isWeak ? 3 : 2.5,
+          duration: isWeak ? 2.5 : 1.8,
           repeat: Infinity,
           ease: 'easeInOut',
         }}
       >
-        <motion.img
-          src={PET_IMAGES[stage]}
-          alt={stage}
-          className="w-full h-full object-contain drop-shadow-lg"
+        {/* Spritesheet clipping */}
+        <div
+          className="w-full h-full overflow-hidden"
           style={{
-            imageRendering: 'auto',
-            filter: isWeak ? 'grayscale(0.5) brightness(0.7)' : 'none',
+            filter: isWeak ? 'grayscale(0.6) brightness(0.6)' : 'drop-shadow(0 4px 12px hsl(var(--flame) / 0.3))',
           }}
-          // Subtle breathing scale
-          animate={{
-            scaleY: [1, 1.02, 1],
-            scaleX: [1, 0.99, 1],
-          }}
-          transition={{
-            duration: 2,
-            repeat: Infinity,
-            ease: 'easeInOut',
-            delay: 0.3,
-          }}
-        />
+        >
+          <div
+            style={{
+              width: `${FRAME_COUNT * 100}%`,
+              height: '100%',
+              transform: `translateX(${frameOffset})`,
+              transition: 'none', // instant frame swap for pixel game feel
+            }}
+          >
+            <img
+              src={SHEETS[stage]}
+              alt={stage}
+              className="w-full h-full object-cover"
+              style={{ imageRendering: 'auto' }}
+              draggable={false}
+            />
+          </div>
+        </div>
       </motion.div>
 
-      {/* Flame particles */}
-      {!isWeak && (
+      {/* Flame particles when alive */}
+      {!isWeak && size === 'normal' && (
         <>
-          {[...Array(3)].map((_, i) => (
+          {[0, 1, 2, 3, 4].map((i) => (
             <motion.div
               key={i}
-              className="absolute w-2 h-2 rounded-full bg-primary"
+              className="absolute rounded-full"
               style={{
-                bottom: size * 0.15,
-                left: `${45 + i * 8}%`,
+                width: 4 + (i % 2) * 2,
+                height: 4 + (i % 2) * 2,
+                bottom: displaySize * 0.1,
+                left: `${35 + i * 8}%`,
+                background: i % 2 === 0 ? 'hsl(var(--flame))' : 'hsl(var(--amber))',
               }}
               animate={{
-                y: [0, -30 - i * 10, -50],
-                x: [(i - 1) * 5, (i - 1) * 10, (i - 1) * 15],
-                opacity: [0.8, 0.4, 0],
-                scale: [0.8, 0.5, 0],
+                y: [0, -25 - i * 8, -45],
+                x: [(i - 2) * 4, (i - 2) * 8, (i - 2) * 12],
+                opacity: [0.9, 0.5, 0],
+                scale: [1, 0.6, 0],
               }}
               transition={{
-                duration: 1.5 + i * 0.3,
+                duration: 1.2 + i * 0.2,
                 repeat: Infinity,
-                delay: i * 0.5,
+                delay: i * 0.35,
                 ease: 'easeOut',
               }}
             />

@@ -8,7 +8,6 @@ import type { PetState, LevelUpResult } from '@/lib/pet';
 import { toast } from 'sonner';
 import { Pause, Play, Check, SkipForward, Home, Apple } from 'lucide-react';
 import PetSprite from '@/components/PetSprite';
-import charmanderImg from '@/assets/pet-charmander.png';
 
 // --- Circular Timer ---
 function CircularTimer({ remaining, total }: { remaining: number; total: number }) {
@@ -412,13 +411,9 @@ export default function RoutineTimer() {
       {/* Center: Timer + Pet */}
       <div className="relative flex flex-col items-center">
         {/* Mini pet above timer */}
-        <motion.div
-          className="mb-3 flex items-center gap-2"
-          animate={{ y: [0, -3, 0] }}
-          transition={{ duration: 2, repeat: Infinity }}
-        >
-          <img src={charmanderImg} alt="pet" className="w-10 h-10 object-contain" />
-        </motion.div>
+        <div className="mb-2">
+          <PetSprite stage={pet.stage} hp={pet.hp} maxHp={pet.maxHp} size="small" />
+        </div>
 
         <CircularTimer remaining={remaining} total={totalSeconds} />
 
