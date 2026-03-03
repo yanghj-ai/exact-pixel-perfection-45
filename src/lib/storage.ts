@@ -7,6 +7,9 @@ export interface UserProfile {
   lastCompletedDate: string | null;
   notificationsEnabled: boolean;
   darkMode: boolean;
+  // Attendance
+  lastLoginDate: string | null;
+  consecutiveLoginDays: number;
 }
 
 const DEFAULT_PROFILE: UserProfile = {
@@ -18,17 +21,28 @@ const DEFAULT_PROFILE: UserProfile = {
   lastCompletedDate: null,
   notificationsEnabled: true,
   darkMode: true,
+  lastLoginDate: null,
+  consecutiveLoginDays: 0,
 };
 
 export function getProfile(): UserProfile {
-  const data = localStorage.getItem('routinit-profile');
-  return data ? { ...DEFAULT_PROFILE, ...JSON.parse(data) } : DEFAULT_PROFILE;
+  const data = localStorage.getItem('routinmon-profile');
+  if (data) return { ...DEFAULT_PROFILE, ...JSON.parse(data) };
+  // Migrate from old key
+  const old = localStorage.getItem('routinit-profile');
+  if (old) {
+    const parsed = { ...DEFAULT_PROFILE, ...JSON.parse(old) };
+    localStorage.setItem('routinmon-profile', JSON.stringify(parsed));
+    localStorage.removeItem('routinit-profile');
+    return parsed;
+  }
+  return DEFAULT_PROFILE;
 }
 
 export function saveProfile(profile: Partial<UserProfile>) {
   const current = getProfile();
   const updated = { ...current, ...profile };
-  localStorage.setItem('routinit-profile', JSON.stringify(updated));
+  localStorage.setItem('routinmon-profile', JSON.stringify(updated));
   return updated;
 }
 

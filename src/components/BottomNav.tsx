@@ -1,11 +1,12 @@
-import { Home, BarChart3, User } from 'lucide-react';
+import { Home, Dumbbell, BookOpen, Settings } from 'lucide-react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 
 const tabs = [
   { path: '/home', icon: Home, label: '홈' },
-  { path: '/insights', icon: BarChart3, label: '인사이트' },
-  { path: '/profile', icon: User, label: '프로필' },
+  { path: '/routine', icon: Dumbbell, label: '루틴' },
+  { path: '/pokedex', icon: BookOpen, label: '도감' },
+  { path: '/settings', icon: Settings, label: '설정' },
 ];
 
 export default function BottomNav() {

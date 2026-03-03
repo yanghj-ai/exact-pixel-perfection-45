@@ -1,276 +1,245 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { getProfile } from '@/lib/storage';
-import { generateRoutine, getTotalDuration, type EnergyLevel, type RoutineItem } from '@/lib/routines';
-import { Flame, Sparkles, Clock, Shuffle, Play } from 'lucide-react';
+import { getPet, savePet, applyHpDecay, feedPet, interactPet, getRandomDialogue, getStageInfo, getRequiredExp } from '@/lib/pet';
+import type { PetState } from '@/lib/pet';
+import { Flame, Apple, Handshake, Dumbbell } from 'lucide-react';
+import { toast } from 'sonner';
 import BottomNav from '@/components/BottomNav';
-
-const greetingByTime = () => {
-  const h = new Date().getHours();
-  if (h < 12) return '좋은 아침이에요';
-  if (h < 18) return '좋은 오후예요';
-  return '좋은 저녁이에요';
-};
-
-const ENERGY_OPTIONS: { key: EnergyLevel; emoji: string; label: string }[] = [
-  { key: 'high', emoji: '⚡', label: '충전됨' },
-  { key: 'normal', emoji: '😊', label: '보통' },
-  { key: 'tired', emoji: '😴', label: '피곤' },
-];
-
-const MOOD_TAGS = ['기쁨', '평온', '스트레스', '피곤', '의욕적'];
 
 export default function Home() {
   const navigate = useNavigate();
   const [profile] = useState(getProfile());
-  const [energy, setEnergy] = useState<EnergyLevel | null>(null);
-  const [selectedMoods, setSelectedMoods] = useState<string[]>([]);
-  const [availableTime, setAvailableTime] = useState(90); // minutes
-  const [routines, setRoutines] = useState<RoutineItem[] | null>(null);
-  const [conditionDone, setConditionDone] = useState(false);
+  const [pet, setPet] = useState<PetState>(getPet());
+  const [dialogue, setDialogue] = useState('');
+  const [hearts, setHearts] = useState<number[]>([]);
 
   useEffect(() => {
     if (!profile.onboardingComplete) {
       navigate('/', { replace: true });
+      return;
     }
-  }, [profile, navigate]);
+    // Apply HP decay on load
+    const updated = applyHpDecay(pet);
+    setPet(updated);
+    // Set initial dialogue
+    setDialogue(getRandomDialogue(updated.hp <= 0 ? 'hungry' : 'idle'));
+  }, []);
 
-  const toggleMood = (mood: string) => {
-    setSelectedMoods((prev) =>
-      prev.includes(mood) ? prev.filter((m) => m !== mood) : [...prev, mood]
-    );
-  };
+  const stageInfo = getStageInfo(pet.stage);
+  const requiredExp = getRequiredExp(pet.level);
+  const expProgress = (pet.exp / requiredExp) * 100;
 
-  const handleGenerateRoutine = () => {
-    if (!energy) return;
-    setRoutines(generateRoutine(energy));
-    setConditionDone(true);
-  };
+  const handleFeed = useCallback(() => {
+    if (pet.foodCount <= 0) {
+      toast('먹이가 없어요!', {
+        description: '루틴을 완료하면 먹이를 얻을 수 있어요 🍎',
+      });
+      return;
+    }
+    const updated = feedPet(pet);
+    if (updated) {
+      setPet(updated);
+      setDialogue(getRandomDialogue('fed'));
+      toast('🍎 먹이를 줬어요!', { description: `HP +20 회복! (남은 먹이: ${updated.foodCount}개)` });
+    }
+  }, [pet]);
 
-  const handleShuffle = () => {
-    if (!energy) return;
-    // cycle energy to get different routine
-    const keys: EnergyLevel[] = ['high', 'normal', 'tired'];
-    const currentIdx = keys.indexOf(energy);
-    const nextEnergy = keys[(currentIdx + 1) % keys.length];
-    setRoutines(generateRoutine(nextEnergy));
-  };
+  const handleInteract = useCallback(() => {
+    const updated = interactPet(pet);
+    setPet(updated);
+    setDialogue(getRandomDialogue('interact'));
+    // Show floating hearts
+    const newHearts = Array.from({ length: 5 }, (_, i) => Date.now() + i);
+    setHearts(newHearts);
+    setTimeout(() => setHearts([]), 1500);
+  }, [pet]);
 
-  const today = new Date();
-  const dateStr = today.toLocaleDateString('ko-KR', {
-    month: 'long',
-    day: 'numeric',
-    weekday: 'long',
-  });
+  const handleExercise = useCallback(() => {
+    navigate('/routine');
+  }, [navigate]);
 
-  const timeLabel = availableTime >= 60
-    ? `${Math.floor(availableTime / 60)}시간${availableTime % 60 > 0 ? ` ${availableTime % 60}분` : ''}`
-    : `${availableTime}분`;
+  const happinessHearts = Math.round(pet.happiness);
 
   return (
     <div className="min-h-screen pb-24">
-      <div className="mx-auto max-w-md px-5 pt-12">
-        {/* Header */}
-        <motion.div
-          initial={{ opacity: 0, y: -10 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="mb-8"
-        >
-          <p className="text-sm text-muted-foreground">{dateStr}</p>
-          <h1 className="mt-1 text-2xl font-bold text-foreground">
-            {greetingByTime()}, <span className="text-gradient-primary">{profile.name}</span>님
-          </h1>
-        </motion.div>
+      <div className="mx-auto max-w-md px-5 pt-10">
+        {/* Top bar */}
+        <div className="flex items-center justify-between mb-6">
+          <div className="flex items-center gap-2">
+            <span className="text-sm font-bold text-primary">Lv.{pet.level}</span>
+            <span className="text-sm font-semibold text-foreground">{pet.name}</span>
+          </div>
+          <div className="flex items-center gap-1.5 rounded-full bg-primary/10 px-3 py-1">
+            <Flame size={14} className="text-primary" />
+            <span className="text-sm font-bold text-primary">{pet.foodCount}</span>
+          </div>
+        </div>
 
-        {/* Streak Card */}
+        {/* Pet area */}
+        <div className="relative flex flex-col items-center mb-6">
+          {/* Floating hearts */}
+          <AnimatePresence>
+            {hearts.map((id, i) => (
+              <motion.span
+                key={id}
+                initial={{ opacity: 1, y: 0, x: (i - 2) * 20 }}
+                animate={{ opacity: 0, y: -60 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 1.2, ease: 'easeOut' }}
+                className="absolute top-20 text-2xl pointer-events-none z-10"
+              >
+                ❤️
+              </motion.span>
+            ))}
+          </AnimatePresence>
+
+          {/* Pet circle */}
+          <motion.div
+            className={`relative flex h-56 w-56 items-center justify-center rounded-full bg-gradient-to-br ${stageInfo.bgGradient} border-2 ${stageInfo.borderColor}`}
+            animate={{ y: [0, -6, 0] }}
+            transition={{ duration: 3, repeat: Infinity, ease: 'easeInOut' }}
+          >
+            <span className="text-8xl select-none">{stageInfo.emoji.split('')[0] === '🐉' ? '🐉' : '🔥'}</span>
+            {pet.stage === 'charmeleon' && <span className="absolute text-4xl -top-2">🔥</span>}
+            {pet.stage === 'charizard' && (
+              <>
+                <span className="absolute text-3xl -top-2 -left-2">🔥</span>
+                <span className="absolute text-3xl -top-2 -right-2">🔥</span>
+              </>
+            )}
+          </motion.div>
+
+          {/* Pet name (tappable) */}
+          <p className="mt-3 text-lg font-bold text-foreground">{pet.name}</p>
+
+          {/* Speech bubble */}
+          <motion.div
+            key={dialogue}
+            initial={{ opacity: 0, y: 5 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="mt-2 glass-card px-4 py-2.5 max-w-[260px]"
+          >
+            <p className="text-sm text-foreground text-center">{dialogue}</p>
+          </motion.div>
+        </div>
+
+        {/* Stat bars */}
+        <div className="glass-card p-4 space-y-3 mb-6">
+          {/* HP */}
+          <div>
+            <div className="flex items-center justify-between mb-1">
+              <span className="text-xs text-muted-foreground">❤️ HP</span>
+              <span className="text-xs font-semibold text-foreground">{pet.hp}/{pet.maxHp}</span>
+            </div>
+            <div className="h-2.5 w-full rounded-full bg-muted overflow-hidden">
+              <motion.div
+                className="h-full rounded-full bg-destructive"
+                initial={false}
+                animate={{ width: `${(pet.hp / pet.maxHp) * 100}%` }}
+                transition={{ duration: 0.5 }}
+              />
+            </div>
+          </div>
+
+          {/* EXP */}
+          <div>
+            <div className="flex items-center justify-between mb-1">
+              <span className="text-xs text-muted-foreground">⚡ EXP</span>
+              <span className="text-xs font-semibold text-foreground">{pet.exp}/{requiredExp}</span>
+            </div>
+            <div className="h-2.5 w-full rounded-full bg-muted overflow-hidden">
+              <motion.div
+                className="h-full rounded-full gradient-primary"
+                initial={false}
+                animate={{ width: `${Math.min(100, expProgress)}%` }}
+                transition={{ duration: 0.5 }}
+              />
+            </div>
+          </div>
+
+          {/* Happiness */}
+          <div>
+            <div className="flex items-center justify-between mb-1">
+              <span className="text-xs text-muted-foreground">😊 행복도</span>
+              <span className="text-xs font-semibold text-foreground">{pet.happiness.toFixed(1)}/5</span>
+            </div>
+            <div className="flex gap-1">
+              {[1, 2, 3, 4, 5].map((i) => (
+                <span
+                  key={i}
+                  className={`text-lg ${i <= happinessHearts ? '' : 'opacity-20'}`}
+                >
+                  ❤️
+                </span>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* Interaction buttons */}
+        <div className="grid grid-cols-3 gap-3">
+          <motion.button
+            whileTap={{ scale: 0.93 }}
+            onClick={handleFeed}
+            className="glass-card flex flex-col items-center gap-2 py-4 hover:bg-card/90 transition-colors"
+          >
+            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-destructive/10">
+              <Apple size={22} className="text-destructive" />
+            </div>
+            <span className="text-xs font-medium text-foreground">먹이주기</span>
+            <span className="text-[10px] text-muted-foreground">{pet.foodCount}개</span>
+          </motion.button>
+
+          <motion.button
+            whileTap={{ scale: 0.93 }}
+            onClick={handleInteract}
+            className="glass-card flex flex-col items-center gap-2 py-4 hover:bg-card/90 transition-colors"
+          >
+            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-secondary/10">
+              <Handshake size={22} className="text-secondary" />
+            </div>
+            <span className="text-xs font-medium text-foreground">교감하기</span>
+          </motion.button>
+
+          <motion.button
+            whileTap={{ scale: 0.93 }}
+            onClick={handleExercise}
+            className="glass-card flex flex-col items-center gap-2 py-4 hover:bg-card/90 transition-colors"
+          >
+            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-primary/10">
+              <Dumbbell size={22} className="text-primary" />
+            </div>
+            <span className="text-xs font-medium text-foreground">함께 운동</span>
+          </motion.button>
+        </div>
+
+        {/* Streak indicator */}
         <motion.div
-          initial={{ opacity: 0, y: 20 }}
+          initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.1 }}
-          className="glass-card mb-6 flex items-center gap-4 p-5"
+          transition={{ delay: 0.3 }}
+          className="mt-5 glass-card p-4 flex items-center gap-3"
         >
-          <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-accent/10">
-            <Flame className="h-7 w-7 text-accent" />
+          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10">
+            <Flame size={20} className="text-primary" />
           </div>
           <div className="flex-1">
-            <p className="text-sm text-muted-foreground">현재 스트릭</p>
-            <p className="text-2xl font-bold text-foreground">
-              {profile.streak}일 <span className="text-lg">연속</span>
-            </p>
+            <p className="text-xs text-muted-foreground">연속 출석</p>
+            <p className="text-lg font-bold text-foreground">{profile.streak}일</p>
           </div>
           <div className="flex gap-1">
             {[...Array(7)].map((_, i) => (
               <div
                 key={i}
-                className={`h-6 w-2 rounded-full ${
-                  i < profile.streak % 7 ? 'gradient-primary' : 'bg-muted'
+                className={`h-5 w-1.5 rounded-full ${
+                  i < (profile.streak % 7 || (profile.streak > 0 ? 7 : 0)) ? 'gradient-primary' : 'bg-muted'
                 }`}
               />
             ))}
           </div>
         </motion.div>
-
-        {/* Condition Input */}
-        <AnimatePresence mode="wait">
-          {!conditionDone ? (
-            <motion.div
-              key="condition"
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -20 }}
-              transition={{ delay: 0.2 }}
-              className="glass-card mb-6 p-5 space-y-5"
-            >
-              <div className="flex items-center gap-2">
-                <Sparkles className="h-5 w-5 text-primary" />
-                <h2 className="font-semibold text-foreground">오늘 컨디션 어때요?</h2>
-              </div>
-
-              {/* Energy Level */}
-              <div>
-                <p className="text-xs text-muted-foreground mb-2.5">에너지 레벨</p>
-                <div className="flex justify-center gap-3">
-                  {ENERGY_OPTIONS.map((item) => (
-                    <motion.button
-                      key={item.key}
-                      whileTap={{ scale: 0.93 }}
-                      onClick={() => setEnergy(item.key)}
-                      className={`flex flex-col items-center gap-1.5 rounded-2xl border-2 px-5 py-3 transition-all ${
-                        energy === item.key
-                          ? 'border-primary bg-primary/10 glow-shadow'
-                          : 'border-border bg-muted/50 hover:border-primary/30'
-                      }`}
-                    >
-                      <span className="text-3xl">{item.emoji}</span>
-                      <span className={`text-xs ${energy === item.key ? 'text-primary' : 'text-muted-foreground'}`}>
-                        {item.label}
-                      </span>
-                    </motion.button>
-                  ))}
-                </div>
-              </div>
-
-              {/* Mood Tags */}
-              <div>
-                <p className="text-xs text-muted-foreground mb-2.5">오늘 기분</p>
-                <div className="flex flex-wrap gap-2 justify-center">
-                  {MOOD_TAGS.map((mood) => (
-                    <button
-                      key={mood}
-                      onClick={() => toggleMood(mood)}
-                      className={`rounded-full border px-4 py-1.5 text-sm transition-all ${
-                        selectedMoods.includes(mood)
-                          ? 'border-primary bg-primary/15 text-primary'
-                          : 'border-border text-muted-foreground hover:border-primary/30'
-                      }`}
-                    >
-                      {mood}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* Available Time Slider */}
-              <div>
-                <div className="flex items-center justify-between mb-2.5">
-                  <p className="text-xs text-muted-foreground">가용 시간</p>
-                  <p className="text-sm font-semibold text-primary">{timeLabel}</p>
-                </div>
-                <input
-                  type="range"
-                  min={30}
-                  max={180}
-                  step={15}
-                  value={availableTime}
-                  onChange={(e) => setAvailableTime(Number(e.target.value))}
-                  className="w-full accent-primary h-2 rounded-full appearance-none bg-muted cursor-pointer
-                    [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:h-5 [&::-webkit-slider-thumb]:w-5 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-primary [&::-webkit-slider-thumb]:shadow-lg"
-                />
-                <div className="flex justify-between text-[10px] text-muted-foreground mt-1">
-                  <span>30분</span>
-                  <span>3시간</span>
-                </div>
-              </div>
-
-              {/* Generate Button */}
-              <motion.button
-                whileTap={{ scale: 0.97 }}
-                onClick={handleGenerateRoutine}
-                disabled={!energy}
-                className="w-full flex items-center justify-center gap-2 rounded-2xl py-3.5 text-base font-semibold gradient-primary text-primary-foreground disabled:opacity-30 transition-all"
-              >
-                <Sparkles size={18} />
-                오늘의 루틴 생성하기
-              </motion.button>
-            </motion.div>
-          ) : null}
-        </AnimatePresence>
-
-        {/* Generated Routines */}
-        <AnimatePresence>
-          {routines && (
-            <motion.div
-              initial={{ opacity: 0, y: 30 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.4 }}
-            >
-              <div className="mb-4 flex items-center justify-between">
-                <h2 className="text-lg font-semibold text-foreground">오늘의 루틴</h2>
-                <div className="flex items-center gap-1 text-sm text-muted-foreground">
-                  <Clock size={14} />
-                  <span>총 {getTotalDuration(routines)}</span>
-                </div>
-              </div>
-
-              <div className="space-y-3 mb-5">
-                {routines.map((routine, i) => (
-                  <motion.div
-                    key={routine.id}
-                    initial={{ opacity: 0, x: -20 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    transition={{ delay: i * 0.1 }}
-                    className="glass-card flex items-center gap-4 p-4"
-                  >
-                    <div className="flex h-7 w-7 items-center justify-center rounded-full gradient-primary text-xs font-bold text-primary-foreground">
-                      {i + 1}
-                    </div>
-                    <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10 text-xl">
-                      {routine.emoji}
-                    </div>
-                    <div className="flex-1">
-                      <p className="font-medium text-foreground">{routine.title}</p>
-                      <p className="text-xs text-muted-foreground">{routine.category}</p>
-                    </div>
-                    <span className="rounded-full bg-muted px-3 py-1 text-xs font-medium text-muted-foreground">
-                      {routine.duration}분
-                    </span>
-                  </motion.div>
-                ))}
-              </div>
-
-              {/* Action Buttons */}
-              <div className="flex gap-3">
-                <motion.button
-                  whileTap={{ scale: 0.95 }}
-                  onClick={handleShuffle}
-                  className="flex flex-1 items-center justify-center gap-2 rounded-2xl border border-border bg-card py-3.5 text-sm font-medium text-foreground transition-all hover:bg-muted"
-                >
-                  <Shuffle size={16} />
-                  다시 섞기
-                </motion.button>
-                <motion.button
-                  whileTap={{ scale: 0.95 }}
-                  onClick={() => navigate('/timer', { state: { routines } })}
-                  className="flex flex-[2] items-center justify-center gap-2 rounded-2xl py-3.5 text-sm font-semibold gradient-primary text-primary-foreground"
-                >
-                  <Play size={16} />
-                  이 루틴으로 시작!
-                </motion.button>
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
       </div>
 
       <BottomNav />
