@@ -314,9 +314,20 @@ export default function RunningPage() {
             </motion.div>
           )}
 
-          {/* Pet celebration */}
+          {/* Leader celebration */}
           <motion.div initial={{ scale: 0.8, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} transition={{ delay: 0.2 }} className="flex flex-col items-center mb-6">
-            <PetSprite stage={pet.stage} hp={pet.hp} maxHp={pet.maxHp} happiness={pet.happiness} streak={0} />
+            {leaderSpecies ? (
+              <motion.img
+                src={leaderSpecies.spriteUrl}
+                alt={leaderSpecies.name}
+                className="w-24 h-24 object-contain"
+                style={{ imageRendering: 'pixelated' }}
+                animate={{ y: [0, -8, 0] }}
+                transition={{ duration: 1.5, repeat: Infinity, ease: 'easeInOut' }}
+              />
+            ) : (
+              <PetSprite stage={pet.stage} hp={pet.hp} maxHp={pet.maxHp} happiness={pet.happiness} streak={0} />
+            )}
             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.5 }} className="glass-card px-4 py-2 mt-2">
               <p className="text-sm text-foreground">정말 대단해! 🔥</p>
             </motion.div>
