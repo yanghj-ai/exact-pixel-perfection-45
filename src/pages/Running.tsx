@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Play, Pause, Square, MapPin, Timer, Flame, Trophy, Navigation } from 'lucide-react';
+import { Play, Pause, Square, MapPin, Timer, Flame, Trophy, Navigation, Map } from 'lucide-react';
 import { toast } from 'sonner';
 import {
   calculateDistance,
@@ -17,18 +17,13 @@ import type { LevelUpResult } from '@/lib/pet';
 import PetSprite from '@/components/PetSprite';
 import BottomNav from '@/components/BottomNav';
 import LevelUpOverlay from '@/components/LevelUpOverlay';
+import RunningMap from '@/components/RunningMap';
 
 type RunState = 'idle' | 'running' | 'paused' | 'completed';
 
 const PET_CHEERS = [
-  '파이팅! 🔥',
-  '잘하고 있어!',
-  '조금만 더!',
-  '대단해! 💪',
-  '같이 달리자!',
-  '최고야! ⚡',
-  '멈추지 마!',
-  '할 수 있어!',
+  '파이팅! 🔥', '잘하고 있어!', '조금만 더!', '대단해! 💪',
+  '같이 달리자!', '최고야! ⚡', '멈추지 마!', '할 수 있어!',
 ];
 
 export default function RunningPage() {
@@ -45,18 +40,26 @@ export default function RunningPage() {
   const [completedChallenges, setCompletedChallenges] = useState<Challenge[]>([]);
   const [foodReward, setFoodReward] = useState(0);
   const [expReward, setExpReward] = useState(0);
+  const [showMap, setShowMap] = useState(false);
 
   const watchIdRef = useRef<number | null>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const cheerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const routeRef = useRef<GeoPoint[]>([]);
+  const elapsedRef = useRef(0);
 
   const pet = getPet();
 
-  // Timer
+  // Timer - keep ref in sync
   useEffect(() => {
     if (runState === 'running') {
-      timerRef.current = setInterval(() => setElapsed(e => e + 1), 1000);
+      timerRef.current = setInterval(() => {
+        setElapsed(e => {
+          const newVal = e + 1;
+          elapsedRef.current = newVal;
+          return newVal;
+        });
+      }, 1000);
     } else {
       if (timerRef.current) clearInterval(timerRef.current);
     }
@@ -93,8 +96,9 @@ export default function RunningPage() {
         setRoute([...routeRef.current]);
         const dist = calculateDistance(routeRef.current);
         setCurrentDistance(dist);
-        if (dist > 0) {
-          const elapsedMin = (Date.now() - routeRef.current[0].timestamp) / 60000;
+        // Use elapsed timer (accounts for pauses) for pace
+        if (dist > 0 && elapsedRef.current > 0) {
+          const elapsedMin = elapsedRef.current / 60;
           setCurrentPace(elapsedMin / dist);
         }
       },
@@ -115,10 +119,12 @@ export default function RunningPage() {
   const handleStart = () => {
     setRunState('running');
     setElapsed(0);
+    elapsedRef.current = 0;
     setRoute([]);
     routeRef.current = [];
     setCurrentDistance(0);
     setCurrentPace(0);
+    setShowMap(true);
     startGPS();
     toast('🏃 런닝 시작!', { description: '파이리와 함께 달려볼까요!' });
   };
@@ -140,11 +146,10 @@ export default function RunningPage() {
       setRunState('idle');
       return;
     }
-    const { session, stats, levelUp, completedChallenges: completed } = completeRunningSession(routeRef.current, elapsed);
+    const { session, stats, levelUp, completedChallenges: completed } = completeRunningSession(routeRef.current, elapsedRef.current);
     setCompletedSession(session);
     setLevelUpResult(levelUp);
     setCompletedChallenges(completed);
-    // Calculate rewards for display
     const food = Math.max(1, Math.floor(session.distanceKm));
     const exp = Math.max(5, Math.round(session.distanceKm * 10));
     setFoodReward(food);
@@ -152,11 +157,11 @@ export default function RunningPage() {
     setRunState('completed');
   };
 
-  // Cleanup on unmount
   useEffect(() => {
     return () => { stopGPS(); if (timerRef.current) clearInterval(timerRef.current); };
   }, [stopGPS]);
 
+  // Completed screen
   if (runState === 'completed' && completedSession) {
     return (
       <div className="min-h-screen pb-24">
@@ -165,6 +170,13 @@ export default function RunningPage() {
             <span className="text-4xl">🎉</span>
             <h1 className="text-2xl font-bold text-foreground mt-2">런닝 완료!</h1>
           </motion.div>
+
+          {/* Route map */}
+          {completedSession.route.length > 1 && (
+            <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }} className="mb-4">
+              <RunningMap route={completedSession.route} className="h-48" />
+            </motion.div>
+          )}
 
           {/* Pet celebration */}
           <motion.div initial={{ scale: 0.8, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} transition={{ delay: 0.2 }} className="flex flex-col items-center mb-6">
@@ -214,7 +226,6 @@ export default function RunningPage() {
             </div>
           </div>
 
-          {/* Completed challenges */}
           {completedChallenges.length > 0 && (
             <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 1 }} className="glass-card p-4 mb-4 border border-secondary/30">
               <p className="text-xs text-muted-foreground mb-2">🏆 챌린지 달성!</p>
@@ -247,14 +258,34 @@ export default function RunningPage() {
         {/* Header */}
         <div className="flex items-center justify-between mb-6">
           <h1 className="text-xl font-bold text-foreground">🏃 런닝</h1>
-          <div className="flex items-center gap-1.5 rounded-full bg-primary/10 px-3 py-1">
-            <Flame size={14} className="text-primary" />
-            <span className="text-sm font-bold text-primary">{pet.foodCount}</span>
+          <div className="flex items-center gap-3">
+            {runState !== 'idle' && (
+              <button
+                onClick={() => setShowMap(v => !v)}
+                className={`flex items-center gap-1 rounded-full px-3 py-1 text-xs font-medium transition-colors ${
+                  showMap ? 'bg-primary/20 text-primary' : 'bg-muted text-muted-foreground'
+                }`}
+              >
+                <Map size={12} />
+                지도
+              </button>
+            )}
+            <div className="flex items-center gap-1.5 rounded-full bg-primary/10 px-3 py-1">
+              <Flame size={14} className="text-primary" />
+              <span className="text-sm font-bold text-primary">{pet.foodCount}</span>
+            </div>
           </div>
         </div>
 
+        {/* Live map */}
+        {showMap && runState !== 'idle' && (
+          <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} className="mb-4">
+            <RunningMap route={route} isLive className="h-48" />
+          </motion.div>
+        )}
+
         {/* Pet + Cheer during run */}
-        {runState !== 'idle' && (
+        {runState !== 'idle' && !showMap && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex flex-col items-center mb-4">
             <div className="scale-75">
               <PetSprite stage={pet.stage} hp={pet.hp} maxHp={pet.maxHp} happiness={pet.happiness} streak={0} />
@@ -278,7 +309,6 @@ export default function RunningPage() {
             </div>
           ) : (
             <div className="space-y-4">
-              {/* Distance - big display */}
               <div className="text-center">
                 <motion.p
                   key={Math.floor(currentDistance * 100)}
@@ -291,7 +321,6 @@ export default function RunningPage() {
                 <p className="text-sm text-muted-foreground">km</p>
               </div>
 
-              {/* Sub stats */}
               <div className="grid grid-cols-3 gap-3">
                 <div className="text-center">
                   <div className="flex items-center justify-center gap-1 mb-1">
@@ -334,36 +363,20 @@ export default function RunningPage() {
           )}
           {runState === 'running' && (
             <>
-              <motion.button
-                whileTap={{ scale: 0.9 }}
-                onClick={handlePause}
-                className="flex h-16 w-16 items-center justify-center rounded-full bg-secondary/20 border border-secondary/30"
-              >
+              <motion.button whileTap={{ scale: 0.9 }} onClick={handlePause} className="flex h-16 w-16 items-center justify-center rounded-full bg-secondary/20 border border-secondary/30">
                 <Pause size={24} className="text-secondary" />
               </motion.button>
-              <motion.button
-                whileTap={{ scale: 0.9 }}
-                onClick={handleStop}
-                className="flex h-16 w-16 items-center justify-center rounded-full bg-destructive/20 border border-destructive/30"
-              >
+              <motion.button whileTap={{ scale: 0.9 }} onClick={handleStop} className="flex h-16 w-16 items-center justify-center rounded-full bg-destructive/20 border border-destructive/30">
                 <Square size={24} className="text-destructive" />
               </motion.button>
             </>
           )}
           {runState === 'paused' && (
             <>
-              <motion.button
-                whileTap={{ scale: 0.9 }}
-                onClick={handleResume}
-                className="flex h-16 w-16 items-center justify-center rounded-full gradient-primary"
-              >
+              <motion.button whileTap={{ scale: 0.9 }} onClick={handleResume} className="flex h-16 w-16 items-center justify-center rounded-full gradient-primary">
                 <Play size={24} className="text-primary-foreground ml-0.5" />
               </motion.button>
-              <motion.button
-                whileTap={{ scale: 0.9 }}
-                onClick={handleStop}
-                className="flex h-16 w-16 items-center justify-center rounded-full bg-destructive/20 border border-destructive/30"
-              >
+              <motion.button whileTap={{ scale: 0.9 }} onClick={handleStop} className="flex h-16 w-16 items-center justify-center rounded-full bg-destructive/20 border border-destructive/30">
                 <Square size={24} className="text-destructive" />
               </motion.button>
             </>
