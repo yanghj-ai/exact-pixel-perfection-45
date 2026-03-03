@@ -6,6 +6,7 @@ import { getPet, savePet, applyHpDecay, feedPet, interactPet, getRandomDialogue,
 import type { PetState } from '@/lib/pet';
 import { Flame, Apple, Handshake, Dumbbell } from 'lucide-react';
 import { toast } from 'sonner';
+import PetSprite from '@/components/PetSprite';
 import BottomNav from '@/components/BottomNav';
 
 export default function Home() {
@@ -95,23 +96,10 @@ export default function Home() {
             ))}
           </AnimatePresence>
 
-          {/* Pet circle */}
-          <motion.div
-            className={`relative flex h-56 w-56 items-center justify-center rounded-full bg-gradient-to-br ${stageInfo.bgGradient} border-2 ${stageInfo.borderColor}`}
-            animate={{ y: [0, -6, 0] }}
-            transition={{ duration: 3, repeat: Infinity, ease: 'easeInOut' }}
-          >
-            <span className="text-8xl select-none">{stageInfo.emoji.split('')[0] === '🐉' ? '🐉' : '🔥'}</span>
-            {pet.stage === 'charmeleon' && <span className="absolute text-4xl -top-2">🔥</span>}
-            {pet.stage === 'charizard' && (
-              <>
-                <span className="absolute text-3xl -top-2 -left-2">🔥</span>
-                <span className="absolute text-3xl -top-2 -right-2">🔥</span>
-              </>
-            )}
-          </motion.div>
+          {/* Pixel art pet */}
+          <PetSprite stage={pet.stage} hp={pet.hp} maxHp={pet.maxHp} />
 
-          {/* Pet name (tappable) */}
+          {/* Pet name */}
           <p className="mt-3 text-lg font-bold text-foreground">{pet.name}</p>
 
           {/* Speech bubble */}
