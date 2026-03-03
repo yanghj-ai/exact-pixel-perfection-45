@@ -1,10 +1,16 @@
 // ═══════════════════════════════════════════════════════════
 // 포켓몬 배틀 시뮬레이션 엔진
 // 턴제 자동 배틀 — 친밀도/레벨/타입 상성 반영
+// 레벨별 기술 습득 & 부상 시스템 통합
 // ═══════════════════════════════════════════════════════════
 
 import { getPokemonById, type PokemonType, type PokemonSpecies } from './pokemon-registry';
 import type { OwnedPokemon } from './collection';
+import { getMovesForLevel, type BattleMove } from './battle-moves';
+import { getEffectiveHpRatio } from './pokemon-health';
+
+// Re-export BattleMove for convenience
+export type { BattleMove } from './battle-moves';
 
 // ─── Types ───────────────────────────────────────────────
 
@@ -17,20 +23,18 @@ export interface BattlePokemon {
   friendship: number;
   types: PokemonType[];
   spriteUrl: string;
+  moves: BattleMove[]; // learned moves
 
-  // Computed battle stats
   maxHp: number;
   currentHp: number;
   attack: number;
   defense: number;
   speed: number;
-}
 
-export interface BattleMove {
-  name: string;
-  type: PokemonType;
-  power: number;
-  emoji: string;
+  // Status effects from moves
+  status: 'none' | 'burn' | 'freeze' | 'paralyze';
+  atkModifier: number; // multiplicative, default 1
+  defModifier: number;
 }
 
 export interface BattleTurnLog {
@@ -39,11 +43,20 @@ export interface BattleTurnLog {
   defenderUid: string;
   move: BattleMove;
   damage: number;
-  effectiveness: number; // 0.5, 1, 2
+  effectiveness: number;
   critical: boolean;
+  missed: boolean;
+  statusApplied: string | null;
+  healAmount: number;
   defenderHpAfter: number;
   defenderFainted: boolean;
   message: string;
+}
+
+export interface BattleReward {
+  coins: number;
+  exp: number;
+  bonusItems: { name: string; emoji: string; count: number }[];
 }
 
 export interface BattleResult {
@@ -52,7 +65,9 @@ export interface BattleResult {
   opponentTeam: BattlePokemon[];
   turns: BattleTurnLog[];
   totalTurns: number;
-  rewards: { coins: number; exp: number };
+  rewards: BattleReward;
+  /** HP ratios of player team after battle for injury tracking */
+  playerHpRatios: { uid: string; hpRatio: number }[];
 }
 
 // ─── Type Effectiveness ──────────────────────────────────
@@ -87,93 +102,10 @@ function getEffectiveness(attackType: PokemonType, defenderTypes: PokemonType[])
   return mult;
 }
 
-// ─── Moves ───────────────────────────────────────────────
-
-const TYPE_MOVES: Record<PokemonType, BattleMove[]> = {
-  fire: [
-    { name: '화염방사', type: 'fire', power: 90, emoji: '🔥' },
-    { name: '불꽃세례', type: 'fire', power: 65, emoji: '🔥' },
-  ],
-  water: [
-    { name: '파도타기', type: 'water', power: 90, emoji: '🌊' },
-    { name: '물대포', type: 'water', power: 65, emoji: '💧' },
-  ],
-  grass: [
-    { name: '솔라빔', type: 'grass', power: 90, emoji: '🌿' },
-    { name: '잎날가르기', type: 'grass', power: 70, emoji: '🍃' },
-  ],
-  electric: [
-    { name: '10만볼트', type: 'electric', power: 90, emoji: '⚡' },
-    { name: '전기충격', type: 'electric', power: 65, emoji: '⚡' },
-  ],
-  ice: [
-    { name: '냉동빔', type: 'ice', power: 90, emoji: '❄️' },
-    { name: '얼음뭉치', type: 'ice', power: 60, emoji: '🧊' },
-  ],
-  psychic: [
-    { name: '사이코키네시스', type: 'psychic', power: 90, emoji: '🔮' },
-    { name: '사념의파동', type: 'psychic', power: 70, emoji: '💜' },
-  ],
-  fighting: [
-    { name: '인파이팅', type: 'fighting', power: 85, emoji: '👊' },
-    { name: '깨뜨리기', type: 'fighting', power: 65, emoji: '💥' },
-  ],
-  poison: [
-    { name: '오물폭탄', type: 'poison', power: 80, emoji: '☠️' },
-    { name: '독찌르기', type: 'poison', power: 60, emoji: '💀' },
-  ],
-  ground: [
-    { name: '지진', type: 'ground', power: 100, emoji: '🌍' },
-    { name: '땅고르기', type: 'ground', power: 60, emoji: '⛰️' },
-  ],
-  flying: [
-    { name: '공중날기', type: 'flying', power: 85, emoji: '🦅' },
-    { name: '공기베기', type: 'flying', power: 60, emoji: '💨' },
-  ],
-  bug: [
-    { name: '시저크로스', type: 'bug', power: 80, emoji: '🪲' },
-    { name: '벌레의저항', type: 'bug', power: 50, emoji: '🐛' },
-  ],
-  rock: [
-    { name: '스톤에지', type: 'rock', power: 100, emoji: '🪨' },
-    { name: '돌떨구기', type: 'rock', power: 60, emoji: '🪨' },
-  ],
-  ghost: [
-    { name: '섀도볼', type: 'ghost', power: 80, emoji: '👻' },
-    { name: '야습', type: 'ghost', power: 60, emoji: '🌑' },
-  ],
-  dragon: [
-    { name: '용성군', type: 'dragon', power: 130, emoji: '🐉' },
-    { name: '드래곤크루', type: 'dragon', power: 80, emoji: '🐲' },
-  ],
-  fairy: [
-    { name: '문포스', type: 'fairy', power: 95, emoji: '🌙' },
-    { name: '요정의바람', type: 'fairy', power: 60, emoji: '✨' },
-  ],
-  normal: [
-    { name: '몸통박치기', type: 'normal', power: 50, emoji: '💥' },
-    { name: '전광석화', type: 'normal', power: 40, emoji: '⚡' },
-  ],
-};
-
-function getMovesForPokemon(types: PokemonType[]): BattleMove[] {
-  const moves: BattleMove[] = [];
-  for (const t of types) {
-    const typeMoves = TYPE_MOVES[t] || TYPE_MOVES.normal;
-    moves.push(typeMoves[0]);
-  }
-  // Add a normal move if only 1 type
-  if (moves.length < 2) {
-    moves.push(TYPE_MOVES.normal[0]);
-  }
-  return moves;
-}
-
 // ─── Stat Calculation ────────────────────────────────────
 
-function computeBattleStats(owned: OwnedPokemon, species: PokemonSpecies): BattlePokemon {
-  // Base stats scale with level + friendship bonus
-  const friendshipBonus = 1 + (owned.friendship / 255) * 0.3; // up to +30%
+function computeBattleStats(owned: OwnedPokemon, species: PokemonSpecies, applyInjury: boolean = false): BattlePokemon {
+  const friendshipBonus = 1 + (owned.friendship / 255) * 0.3;
   const levelFactor = owned.level;
 
   const baseHp = 40 + levelFactor * 3;
@@ -181,11 +113,19 @@ function computeBattleStats(owned: OwnedPokemon, species: PokemonSpecies): Battl
   const baseDef = 12 + levelFactor * 1.5;
   const baseSpd = 10 + levelFactor * 1.2;
 
-  // Rarity multiplier
   const rarityMult: Record<string, number> = {
     common: 0.85, uncommon: 0.95, rare: 1.05, epic: 1.15, legendary: 1.3,
   };
   const rMult = rarityMult[species.rarity] || 1;
+
+  const maxHp = Math.round(baseHp * friendshipBonus * rMult);
+
+  // Apply injury: start with reduced HP
+  const injuryRatio = applyInjury ? getEffectiveHpRatio(owned.uid) : 1;
+  const startingHp = Math.max(1, Math.round(maxHp * injuryRatio));
+
+  // Get moves based on level
+  const moves = getMovesForLevel(species.types, owned.level);
 
   return {
     uid: owned.uid,
@@ -196,11 +136,15 @@ function computeBattleStats(owned: OwnedPokemon, species: PokemonSpecies): Battl
     friendship: owned.friendship,
     types: species.types,
     spriteUrl: species.spriteUrl,
-    maxHp: Math.round(baseHp * friendshipBonus * rMult),
-    currentHp: Math.round(baseHp * friendshipBonus * rMult),
+    moves,
+    maxHp,
+    currentHp: startingHp,
     attack: Math.round(baseAtk * friendshipBonus * rMult),
     defense: Math.round(baseDef * friendshipBonus * rMult),
     speed: Math.round(baseSpd * friendshipBonus * rMult),
+    status: 'none',
+    atkModifier: 1,
+    defModifier: 1,
   };
 }
 
@@ -209,12 +153,10 @@ export function buildBattleTeam(ownedPokemon: OwnedPokemon[]): BattlePokemon[] {
     .map(p => {
       const species = getPokemonById(p.speciesId);
       if (!species) return null;
-      return computeBattleStats(p, species);
+      return computeBattleStats(p, species, true); // apply injury
     })
     .filter(Boolean) as BattlePokemon[];
 }
-
-// ─── NPC Team Builder ────────────────────────────────────
 
 export function buildNpcBattleTeam(speciesIds: number[], level: number, friendship: number): BattlePokemon[] {
   return speciesIds
@@ -231,7 +173,7 @@ export function buildNpcBattleTeam(speciesIds: number[], level: number, friendsh
         acquiredMethod: 'encounter',
         isInParty: true,
       };
-      return computeBattleStats(fake, species);
+      return computeBattleStats(fake, species, false);
     })
     .filter(Boolean) as BattlePokemon[];
 }
@@ -243,7 +185,6 @@ export function simulateBattle(playerTeam: BattlePokemon[], opponentTeam: Battle
   let turnCount = 0;
   const maxTurns = 100;
 
-  // Clone HP
   const pTeam = playerTeam.map(p => ({ ...p }));
   const oTeam = opponentTeam.map(p => ({ ...p }));
 
@@ -255,37 +196,92 @@ export function simulateBattle(playerTeam: BattlePokemon[], opponentTeam: Battle
     const attacker = pTeam[pIdx];
     const defender = oTeam[oIdx];
 
-    // Determine who goes first by speed
-    const playerFirst = attacker.speed >= defender.speed;
-    const first = playerFirst ? attacker : defender;
-    const second = playerFirst ? defender : attacker;
-    const firstIsPlayer = playerFirst;
+    // Skip if frozen (10% thaw chance)
+    if (attacker.status === 'freeze' && Math.random() > 0.1) {
+      // skip turn
+    } else if (attacker.status === 'paralyze' && Math.random() < 0.25) {
+      // paralysis skip
+    } else {
+      const playerFirst = attacker.speed >= defender.speed;
+      const first = playerFirst ? attacker : defender;
+      const second = playerFirst ? defender : attacker;
+      const firstIsPlayer = playerFirst;
 
-    // First attack
-    const result1 = doAttack(first, second, turnCount, firstIsPlayer);
-    turns.push(result1);
-    if (result1.defenderFainted) {
-      if (firstIsPlayer) oIdx++;
-      else pIdx++;
-      if (pIdx >= pTeam.length || oIdx >= oTeam.length) break;
-      continue;
-    }
+      const result1 = doAttack(first, second, turnCount, firstIsPlayer);
+      turns.push(result1);
+      if (result1.defenderFainted) {
+        if (firstIsPlayer) oIdx++;
+        else pIdx++;
+        if (pIdx >= pTeam.length || oIdx >= oTeam.length) break;
+        continue;
+      }
 
-    // Second attack
-    turnCount++;
-    const result2 = doAttack(second, first, turnCount, !firstIsPlayer);
-    turns.push(result2);
-    if (result2.defenderFainted) {
-      if (!firstIsPlayer) oIdx++;
-      else pIdx++;
+      turnCount++;
+      const result2 = doAttack(second, first, turnCount, !firstIsPlayer);
+      turns.push(result2);
+      if (result2.defenderFainted) {
+        if (!firstIsPlayer) oIdx++;
+        else pIdx++;
+      }
     }
   }
 
   const playerWon = oIdx >= oTeam.length;
+
+  // ─── Enhanced Rewards ─────────────────
   const avgOpponentLevel = opponentTeam.reduce((s, p) => s + p.level, 0) / opponentTeam.length;
-  const rewards = playerWon
-    ? { coins: Math.round(10 + avgOpponentLevel * 2), exp: Math.round(15 + avgOpponentLevel * 3) }
-    : { coins: Math.round(3 + avgOpponentLevel * 0.5), exp: Math.round(5 + avgOpponentLevel) };
+  const avgPlayerLevel = playerTeam.reduce((s, p) => s + p.level, 0) / playerTeam.length;
+  const levelDiff = avgOpponentLevel - avgPlayerLevel;
+
+  // Base rewards
+  let baseCoins = 10 + avgOpponentLevel * 2;
+  let baseExp = 15 + avgOpponentLevel * 3;
+
+  // Level difference bonus (harder opponents = more rewards)
+  if (levelDiff > 0) {
+    baseCoins *= 1 + levelDiff * 0.1;
+    baseExp *= 1 + levelDiff * 0.15;
+  }
+
+  // Team size multiplier (fighting more pokemon = more rewards)
+  const teamSizeMult = 1 + (opponentTeam.length - 1) * 0.15;
+  baseCoins *= teamSizeMult;
+  baseExp *= teamSizeMult;
+
+  // Loss penalty
+  if (!playerWon) {
+    baseCoins *= 0.3;
+    baseExp *= 0.4;
+  }
+
+  // Bonus items
+  const bonusItems: { name: string; emoji: string; count: number }[] = [];
+  if (playerWon) {
+    // Chance for potion
+    if (Math.random() < 0.3) {
+      bonusItems.push({ name: '상처약', emoji: '💊', count: 1 });
+    }
+    // Chance for food
+    if (Math.random() < 0.25) {
+      bonusItems.push({ name: '먹이', emoji: '🍎', count: Math.floor(Math.random() * 2) + 1 });
+    }
+    // Rare: egg ticket for high-level wins
+    if (avgOpponentLevel >= 20 && Math.random() < 0.1) {
+      bonusItems.push({ name: '알 교환권', emoji: '🎫', count: 1 });
+    }
+  }
+
+  const rewards: BattleReward = {
+    coins: Math.round(baseCoins),
+    exp: Math.round(baseExp),
+    bonusItems,
+  };
+
+  // Track HP ratios for injury system
+  const playerHpRatios = pTeam.map(p => ({
+    uid: p.uid,
+    hpRatio: p.currentHp / p.maxHp,
+  }));
 
   return {
     winner: playerWon ? 'player' : 'opponent',
@@ -294,12 +290,14 @@ export function simulateBattle(playerTeam: BattlePokemon[], opponentTeam: Battle
     turns,
     totalTurns: turnCount,
     rewards,
+    playerHpRatios,
   };
 }
 
 function doAttack(attacker: BattlePokemon, defender: BattlePokemon, turn: number, isPlayerAttacking: boolean): BattleTurnLog {
-  const moves = getMovesForPokemon(attacker.types);
-  // Pick best move (highest effective damage)
+  const moves = attacker.moves.length > 0 ? attacker.moves : getMovesForLevel(attacker.types, attacker.level);
+
+  // Pick best effective move
   let bestMove = moves[0];
   let bestDmg = 0;
   for (const m of moves) {
@@ -308,20 +306,85 @@ function doAttack(attacker: BattlePokemon, defender: BattlePokemon, turn: number
     if (d > bestDmg) { bestDmg = d; bestMove = m; }
   }
 
+  // Accuracy check
+  const accuracyRoll = Math.random() * 100;
+  const missed = accuracyRoll > bestMove.accuracy;
+
+  if (missed) {
+    const aName = attacker.nickname || attacker.name;
+    return {
+      turn,
+      attackerUid: attacker.uid,
+      defenderUid: defender.uid,
+      move: bestMove,
+      damage: 0,
+      effectiveness: 1,
+      critical: false,
+      missed: true,
+      statusApplied: null,
+      healAmount: 0,
+      defenderHpAfter: defender.currentHp,
+      defenderFainted: false,
+      message: `${aName}의 ${bestMove.name}! 하지만 빗나갔다!`,
+    };
+  }
+
   const effectiveness = getEffectiveness(bestMove.type, defender.types);
   const critical = Math.random() < 0.1;
   const critMult = critical ? 1.5 : 1;
   const stab = attacker.types.includes(bestMove.type) ? 1.5 : 1;
   const randomFactor = 0.85 + Math.random() * 0.15;
 
+  // Status modifiers
+  const atkMod = attacker.atkModifier * (attacker.status === 'burn' ? 0.5 : 1);
+  const defMod = defender.defModifier;
+
   let damage = Math.round(
-    ((attacker.attack * bestMove.power) / (defender.defense * 2.5)) *
+    ((attacker.attack * atkMod * bestMove.power) / (defender.defense * defMod * 2.5)) *
     effectiveness * critMult * stab * randomFactor
   );
   damage = Math.max(1, damage);
 
   defender.currentHp = Math.max(0, defender.currentHp - damage);
   const fainted = defender.currentHp <= 0;
+
+  // Apply move effects
+  let statusApplied: string | null = null;
+  let healAmount = 0;
+
+  if (bestMove.effect && bestMove.effectChance && !fainted) {
+    const effectRoll = Math.random() * 100;
+    if (effectRoll < bestMove.effectChance) {
+      switch (bestMove.effect) {
+        case 'burn':
+          if (defender.status === 'none') { defender.status = 'burn'; statusApplied = 'burn'; }
+          break;
+        case 'freeze':
+          if (defender.status === 'none') { defender.status = 'freeze'; statusApplied = 'freeze'; }
+          break;
+        case 'paralyze':
+          if (defender.status === 'none') { defender.status = 'paralyze'; statusApplied = 'paralyze'; }
+          break;
+        case 'heal':
+          healAmount = Math.round(damage * 0.5);
+          attacker.currentHp = Math.min(attacker.maxHp, attacker.currentHp + healAmount);
+          break;
+        case 'boost_atk':
+          attacker.atkModifier = Math.min(2, attacker.atkModifier * 1.3);
+          break;
+        case 'lower_def':
+          defender.defModifier = Math.max(0.5, defender.defModifier * 0.8);
+          statusApplied = 'lower_def';
+          break;
+      }
+    }
+  }
+
+  // Burn damage
+  if (defender.status === 'burn' && !fainted) {
+    const burnDmg = Math.max(1, Math.round(defender.maxHp * 0.06));
+    defender.currentHp = Math.max(0, defender.currentHp - burnDmg);
+  }
 
   const aName = attacker.nickname || attacker.name;
   const dName = defender.nickname || defender.name;
@@ -330,7 +393,12 @@ function doAttack(attacker: BattlePokemon, defender: BattlePokemon, turn: number
   else if (effectiveness < 1) message += '효과가 별로인 듯하다... ';
   if (critical) message += '급소에 맞았다! ';
   message += `${damage} 데미지!`;
-  if (fainted) message += ` ${dName}은(는) 쓰러졌다!`;
+  if (statusApplied === 'burn') message += ` ${dName}은(는) 화상을 입었다!`;
+  if (statusApplied === 'freeze') message += ` ${dName}은(는) 얼어붙었다!`;
+  if (statusApplied === 'paralyze') message += ` ${dName}은(는) 마비되었다!`;
+  if (statusApplied === 'lower_def') message += ` ${dName}의 방어가 떨어졌다!`;
+  if (healAmount > 0) message += ` ${aName}은(는) ${healAmount} HP 회복!`;
+  if (fainted || defender.currentHp <= 0) message += ` ${dName}은(는) 쓰러졌다!`;
 
   return {
     turn,
@@ -340,8 +408,11 @@ function doAttack(attacker: BattlePokemon, defender: BattlePokemon, turn: number
     damage,
     effectiveness,
     critical,
+    missed: false,
+    statusApplied,
+    healAmount,
     defenderHpAfter: defender.currentHp,
-    defenderFainted: fainted,
+    defenderFainted: fainted || defender.currentHp <= 0,
     message,
   };
 }

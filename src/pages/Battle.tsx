@@ -1,17 +1,17 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ArrowLeft, Swords, Zap, Shield, Heart, Trophy, Coins } from 'lucide-react';
+import { ArrowLeft, Swords, Zap, Shield, Heart, Trophy, Coins, Sparkles, AlertTriangle } from 'lucide-react';
 import { toast } from 'sonner';
-import { getParty, markAsSeen } from '@/lib/collection';
+import { getParty, markAsSeen, addCoins } from '@/lib/collection';
 import { getPokemonById } from '@/lib/pokemon-registry';
 import {
   buildBattleTeam, buildNpcBattleTeam, simulateBattle,
   saveBattleRecord, type BattleResult, type BattleTurnLog, type BattlePokemon,
 } from '@/lib/battle';
 import { NPC_TRAINERS, getNpcById, type NpcTrainer } from '@/lib/npc-trainers';
-import { addCoins } from '@/lib/collection';
 import { grantRewards } from '@/lib/pet';
+import { applyBattleDamage, getEffectiveHpRatio, canBattle, getInjuredCount } from '@/lib/pokemon-health';
 import { Button } from '@/components/ui/button';
 import BottomNav from '@/components/BottomNav';
 import { clearPendingEncounter } from '@/lib/npc-encounter';
@@ -24,7 +24,6 @@ export default function BattlePage() {
   const preselectedNpc = searchParams.get('npc');
   const isAiNpc = searchParams.get('aiNpc') === 'true';
 
-  // Load AI NPC from sessionStorage if applicable
   const getInitialNpc = (): NpcTrainer | null => {
     if (isAiNpc) {
       const stored = sessionStorage.getItem('routinmon-ai-npc');
@@ -46,8 +45,8 @@ export default function BattlePage() {
   const turnTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const party = getParty();
+  const injuredCount = getInjuredCount();
 
-  // Auto-start if NPC preselected
   useEffect(() => {
     if ((preselectedNpc || isAiNpc) && selectedNpc) {
       startBattle(selectedNpc);
@@ -59,15 +58,22 @@ export default function BattlePage() {
       toast('파티에 포켓몬이 없습니다!');
       return;
     }
+
+    // Check if any party member can battle
+    const battleableParty = party.filter(p => canBattle(p.uid));
+    if (battleableParty.length === 0) {
+      toast.error('모든 포켓몬이 부상 상태입니다!', { description: '포켓몬 센터에서 회복하세요.' });
+      return;
+    }
+
     setSelectedNpc(npc);
     setPhase('intro');
 
-    const pTeam = buildBattleTeam(party);
+    const pTeam = buildBattleTeam(battleableParty);
     const oTeam = buildNpcBattleTeam(npc.teamSpeciesIds, npc.level, npc.friendship);
     setPlayerTeamDisplay(pTeam);
     setOpponentTeamDisplay(oTeam);
 
-    // Mark opponent Pokemon as "seen" in Pokédex
     markAsSeen(npc.teamSpeciesIds);
 
     setTimeout(() => {
@@ -82,12 +88,16 @@ export default function BattlePage() {
   useEffect(() => {
     if (phase !== 'fighting' || !battleResult) return;
     if (currentTurnIdx >= battleResult.turns.length) {
-      // Battle over
       setTimeout(() => {
         setPhase('result');
         // Grant rewards
         addCoins(battleResult.rewards.coins);
-        grantRewards(0, battleResult.rewards.exp);
+        grantRewards(
+          battleResult.rewards.bonusItems.filter(i => i.name === '먹이').reduce((s, i) => s + i.count, 0),
+          battleResult.rewards.exp
+        );
+        // Apply injuries
+        applyBattleDamage(battleResult.playerHpRatios);
         saveBattleRecord({
           id: `battle_${Date.now()}`,
           date: new Date().toISOString().split('T')[0],
@@ -110,39 +120,13 @@ export default function BattlePage() {
   const currentTurn: BattleTurnLog | null =
     battleResult && currentTurnIdx > 0 ? battleResult.turns[currentTurnIdx - 1] : null;
 
-  // Find active pokemon for each side
-  const getActivePokemon = (turns: BattleTurnLog[], idx: number, team: BattlePokemon[], isPlayer: boolean) => {
-    if (idx === 0 || !turns.length) return team[0];
-    // Find the last turn where this side's pokemon was involved
-    for (let i = Math.min(idx - 1, turns.length - 1); i >= 0; i--) {
-      const t = turns[i];
-      const found = team.find(p => p.uid === t.attackerUid || p.uid === t.defenderUid);
-      if (found) {
-        // Check if it fainted
-        if (t.defenderUid === found.uid && t.defenderFainted) {
-          // Move to next
-          const faintedIdx = team.findIndex(p => p.uid === found.uid);
-          if (faintedIdx < team.length - 1) return team[faintedIdx + 1];
-        }
-        return found;
-      }
-    }
-    return team[0];
-  };
-
   // ─── Select Phase ───────────────────────────
   if (phase === 'select') {
     const difficultyColors: Record<string, string> = {
-      easy: 'text-heal',
-      medium: 'text-secondary',
-      hard: 'text-primary',
-      elite: 'text-accent',
+      easy: 'text-heal', medium: 'text-secondary', hard: 'text-primary', elite: 'text-accent',
     };
     const difficultyLabels: Record<string, string> = {
-      easy: '쉬움',
-      medium: '보통',
-      hard: '어려움',
-      elite: '엘리트',
+      easy: '쉬움', medium: '보통', hard: '어려움', elite: '엘리트',
     };
 
     return (
@@ -158,11 +142,55 @@ export default function BattlePage() {
             </div>
           </div>
 
+          {/* Injury Warning */}
+          {injuredCount > 0 && (
+            <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} className="glass-card p-3 mb-4 border-amber/30 bg-amber/5">
+              <div className="flex items-center gap-2">
+                <AlertTriangle size={14} className="text-amber" />
+                <span className="text-xs text-foreground font-medium">
+                  부상 포켓몬 {injuredCount}마리 — 포켓몬 센터에서 회복하세요
+                </span>
+              </div>
+              <Button size="sm" variant="outline" className="mt-2 w-full text-xs" onClick={() => navigate('/home')}>
+                🏥 포켓몬 센터로 이동
+              </Button>
+            </motion.div>
+          )}
+
           {party.length === 0 && (
             <div className="glass-card p-6 text-center mb-4">
               <p className="text-foreground font-semibold">파티에 포켓몬이 없습니다!</p>
               <p className="text-muted-foreground text-sm mt-1">파티 관리에서 포켓몬을 추가하세요</p>
               <Button onClick={() => navigate('/party')} className="mt-3" size="sm">파티 관리</Button>
+            </div>
+          )}
+
+          {/* Party HP Preview */}
+          {party.length > 0 && (
+            <div className="glass-card p-3 mb-4">
+              <p className="text-[10px] text-muted-foreground mb-2 font-medium">내 파티 상태</p>
+              <div className="flex gap-2">
+                {party.map(p => {
+                  const species = getPokemonById(p.speciesId);
+                  const hpRatio = getEffectiveHpRatio(p.uid);
+                  const able = hpRatio > 0;
+                  return (
+                    <div key={p.uid} className={`flex-1 text-center ${!able ? 'opacity-40' : ''}`}>
+                      {species && <img src={species.spriteUrl} alt={species.name} className="w-8 h-8 mx-auto object-contain" style={{ imageRendering: 'pixelated' }} />}
+                      <div className="h-1.5 rounded-full bg-muted overflow-hidden mt-1">
+                        <div
+                          className="h-full rounded-full transition-all"
+                          style={{
+                            width: `${hpRatio * 100}%`,
+                            background: hpRatio > 0.5 ? 'hsl(var(--heal-green))' : hpRatio > 0.2 ? 'hsl(var(--amber))' : 'hsl(var(--destructive))',
+                          }}
+                        />
+                      </div>
+                      {!able && <p className="text-[8px] text-destructive mt-0.5">기절</p>}
+                    </div>
+                  );
+                })}
+              </div>
             </div>
           )}
 
@@ -172,7 +200,7 @@ export default function BattlePage() {
                 key={npc.id}
                 whileTap={{ scale: 0.97 }}
                 onClick={() => startBattle(npc)}
-                disabled={party.length === 0}
+                disabled={party.length === 0 || party.filter(p => canBattle(p.uid)).length === 0}
                 className="w-full glass-card p-4 flex items-center gap-4 hover:border-primary/30 transition-colors disabled:opacity-40 text-left"
               >
                 <span className="text-3xl">{npc.emoji}</span>
@@ -213,48 +241,20 @@ export default function BattlePage() {
   if (phase === 'intro' && selectedNpc) {
     return (
       <div className="min-h-screen flex items-center justify-center">
-        <motion.div
-          initial={{ opacity: 0, scale: 0.9 }}
-          animate={{ opacity: 1, scale: 1 }}
-          className="text-center px-8"
-        >
-          <motion.p
-            initial={{ y: -20, opacity: 0 }}
-            animate={{ y: 0, opacity: 1 }}
-            className="text-sm text-muted-foreground mb-4"
-          >
+        <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} className="text-center px-8">
+          <motion.p initial={{ y: -20, opacity: 0 }} animate={{ y: 0, opacity: 1 }} className="text-sm text-muted-foreground mb-4">
             {selectedNpc.title}
           </motion.p>
-          <motion.div
-            initial={{ scale: 0 }}
-            animate={{ scale: 1 }}
-            transition={{ delay: 0.3, type: 'spring' }}
-            className="text-5xl mb-3"
-          >
+          <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }} transition={{ delay: 0.3, type: 'spring' }} className="text-5xl mb-3">
             {selectedNpc.emoji}
           </motion.div>
-          <motion.p
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ delay: 0.5 }}
-            className="text-xl font-bold text-foreground mb-3"
-          >
+          <motion.p initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.5 }} className="text-xl font-bold text-foreground mb-3">
             {selectedNpc.name}이(가) 승부를 걸어왔다!
           </motion.p>
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ delay: 0.8 }}
-            className="glass-card px-4 py-2 inline-block"
-          >
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.8 }} className="glass-card px-4 py-2 inline-block">
             <p className="text-sm text-foreground">"{selectedNpc.dialogue.before}"</p>
           </motion.div>
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ delay: 1.5 }}
-            className="mt-6"
-          >
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 1.5 }} className="mt-6">
             <Swords size={24} className="text-primary mx-auto animate-pulse" />
           </motion.div>
         </motion.div>
@@ -264,15 +264,13 @@ export default function BattlePage() {
 
   // ─── Fighting Phase ─────────────────────────
   if (phase === 'fighting' && battleResult && selectedNpc) {
-    const pActive = playerTeamDisplay[0]; // simplified
+    const pActive = playerTeamDisplay[0];
     const oActive = opponentTeamDisplay[0];
 
-    // Track HP from turns
     const getHp = (uid: string, maxHp: number) => {
       for (let i = Math.min(currentTurnIdx - 1, battleResult.turns.length - 1); i >= 0; i--) {
         if (battleResult.turns[i].defenderUid === uid) return battleResult.turns[i].defenderHpAfter;
         if (battleResult.turns[i].attackerUid === uid) {
-          // Check if this pokemon was also a defender earlier
           for (let j = i; j >= 0; j--) {
             if (battleResult.turns[j].defenderUid === uid) return battleResult.turns[j].defenderHpAfter;
           }
@@ -284,14 +282,19 @@ export default function BattlePage() {
     const pHp = pActive ? getHp(pActive.uid, pActive.maxHp) : 0;
     const oHp = oActive ? getHp(oActive.uid, oActive.maxHp) : 0;
 
+    // Get current move for display
+    const currentMove = currentTurn?.move;
+
     return (
       <div className="min-h-screen flex flex-col">
         <div className="mx-auto max-w-md w-full px-5 pt-6 flex-1 flex flex-col">
           {/* Opponent */}
           <div className="flex items-center gap-3 mb-2">
             <div className="flex-1">
-              <p className="text-xs font-bold text-foreground">{oActive?.nickname || oActive?.name || '???'}</p>
-              <p className="text-[10px] text-muted-foreground">Lv.{oActive?.level || 0}</p>
+              <div className="flex items-center gap-2">
+                <p className="text-xs font-bold text-foreground">{oActive?.nickname || oActive?.name || '???'}</p>
+                <p className="text-[10px] text-muted-foreground">Lv.{oActive?.level || 0}</p>
+              </div>
               <div className="h-2 rounded-full bg-muted overflow-hidden mt-1">
                 <motion.div
                   className="h-full rounded-full"
@@ -301,46 +304,34 @@ export default function BattlePage() {
                   transition={{ duration: 0.4 }}
                 />
               </div>
+              <p className="text-[9px] text-muted-foreground mt-0.5">{Math.max(0, oHp)}/{oActive?.maxHp || 0}</p>
             </div>
           </div>
 
           {/* Battle field */}
           <div className="relative flex-1 min-h-[200px] flex items-center justify-between px-4">
-            {/* Opponent sprite (right) */}
             <div />
             {oActive && (
               <motion.div
-                animate={currentTurn?.defenderUid === oActive.uid ? { x: [0, 5, -5, 0] } : {}}
+                animate={currentTurn?.defenderUid === oActive.uid && !currentTurn.missed ? { x: [0, 5, -5, 0] } : {}}
                 transition={{ duration: 0.3 }}
               >
-                <img
-                  src={oActive.spriteUrl}
-                  alt={oActive.name}
-                  className="w-24 h-24 object-contain"
-                  style={{ imageRendering: 'pixelated' }}
-                />
+                <img src={oActive.spriteUrl} alt={oActive.name} className="w-24 h-24 object-contain" style={{ imageRendering: 'pixelated' }} />
               </motion.div>
             )}
-
-            {/* Player sprite (left, bottom) */}
             {pActive && (
               <motion.div
                 className="absolute bottom-4 left-4"
-                animate={currentTurn?.attackerUid === pActive.uid ? { x: [0, 10, 0] } : currentTurn?.defenderUid === pActive.uid ? { x: [0, -5, 5, 0] } : {}}
+                animate={currentTurn?.attackerUid === pActive.uid ? { x: [0, 10, 0] } : currentTurn?.defenderUid === pActive.uid && !currentTurn?.missed ? { x: [0, -5, 5, 0] } : {}}
                 transition={{ duration: 0.3 }}
               >
-                <img
-                  src={pActive.spriteUrl}
-                  alt={pActive.name}
-                  className="w-20 h-20 object-contain"
-                  style={{ imageRendering: 'pixelated' }}
-                />
+                <img src={pActive.spriteUrl} alt={pActive.name} className="w-20 h-20 object-contain" style={{ imageRendering: 'pixelated' }} />
               </motion.div>
             )}
 
-            {/* Damage flash */}
+            {/* Move effect */}
             <AnimatePresence>
-              {currentTurn && (
+              {currentTurn && !currentTurn.missed && (
                 <motion.div
                   key={currentTurnIdx}
                   initial={{ opacity: 0, scale: 0.5 }}
@@ -357,8 +348,10 @@ export default function BattlePage() {
           {/* Player HP */}
           <div className="flex items-center gap-3 mt-2 mb-2">
             <div className="flex-1 text-right">
-              <p className="text-xs font-bold text-foreground">{pActive?.nickname || pActive?.name || '???'}</p>
-              <p className="text-[10px] text-muted-foreground">Lv.{pActive?.level || 0}</p>
+              <div className="flex items-center justify-end gap-2">
+                <p className="text-[10px] text-muted-foreground">Lv.{pActive?.level || 0}</p>
+                <p className="text-xs font-bold text-foreground">{pActive?.nickname || pActive?.name || '???'}</p>
+              </div>
               <div className="h-2 rounded-full bg-muted overflow-hidden mt-1">
                 <motion.div
                   className="h-full rounded-full"
@@ -368,30 +361,35 @@ export default function BattlePage() {
                   transition={{ duration: 0.4 }}
                 />
               </div>
+              <p className="text-[9px] text-muted-foreground mt-0.5">{Math.max(0, pHp)}/{pActive?.maxHp || 0}</p>
             </div>
           </div>
+
+          {/* Move info */}
+          {currentMove && (
+            <div className="flex items-center gap-2 mb-1 justify-center">
+              <span className="text-[10px] px-2 py-0.5 rounded-full bg-primary/10 text-primary font-medium">
+                {currentMove.emoji} {currentMove.name}
+              </span>
+              <span className="text-[9px] text-muted-foreground">위력 {currentMove.power}</span>
+              {currentTurn?.missed && <span className="text-[9px] text-destructive font-bold">MISS!</span>}
+            </div>
+          )}
 
           {/* Turn log */}
           <div className="glass-card p-3 min-h-[60px] flex items-center">
             <AnimatePresence mode="wait">
               {currentTurn ? (
-                <motion.div
-                  key={currentTurnIdx}
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0 }}
-                  className="w-full"
-                >
+                <motion.div key={currentTurnIdx} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className="w-full">
                   <p className="text-xs text-foreground">{currentTurn.message}</p>
                   {currentTurn.effectiveness > 1 && <p className="text-[10px] text-secondary mt-0.5">효과는 굉장했다!</p>}
                   {currentTurn.critical && <p className="text-[10px] text-primary mt-0.5">급소에 맞았다!</p>}
+                  {currentTurn.statusApplied && currentTurn.statusApplied !== 'lower_def' && (
+                    <p className="text-[10px] text-amber mt-0.5">상태이상 발생!</p>
+                  )}
                 </motion.div>
               ) : (
-                <motion.p
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  className="text-xs text-muted-foreground w-full text-center"
-                >
+                <motion.p initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="text-xs text-muted-foreground w-full text-center">
                   배틀 시작!
                 </motion.p>
               )}
@@ -405,31 +403,21 @@ export default function BattlePage() {
   // ─── Result Phase ───────────────────────────
   if (phase === 'result' && battleResult && selectedNpc) {
     const won = battleResult.winner === 'player';
+    const { rewards } = battleResult;
+
     return (
       <div className="min-h-screen pb-24">
         <div className="mx-auto max-w-md px-5 pt-8">
           <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="text-center mb-6">
-            <motion.span
-              initial={{ scale: 0 }}
-              animate={{ scale: 1 }}
-              transition={{ type: 'spring', delay: 0.2 }}
-              className="text-5xl block mb-3"
-            >
+            <motion.span initial={{ scale: 0 }} animate={{ scale: 1 }} transition={{ type: 'spring', delay: 0.2 }} className="text-5xl block mb-3">
               {won ? '🏆' : '😢'}
             </motion.span>
             <h1 className="text-2xl font-bold text-foreground">{won ? '승리!' : '패배...'}</h1>
-            <p className="text-sm text-muted-foreground mt-1">
-              vs {selectedNpc.name} ({selectedNpc.title})
-            </p>
+            <p className="text-sm text-muted-foreground mt-1">vs {selectedNpc.name} ({selectedNpc.title})</p>
           </motion.div>
 
           {/* NPC Dialogue */}
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ delay: 0.4 }}
-            className="glass-card p-4 mb-4 text-center"
-          >
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.4 }} className="glass-card p-4 mb-4 text-center">
             <span className="text-2xl">{selectedNpc.emoji}</span>
             <p className="text-sm text-foreground mt-2">
               "{won ? selectedNpc.dialogue.win : selectedNpc.dialogue.lose}"
@@ -437,14 +425,9 @@ export default function BattlePage() {
           </motion.div>
 
           {/* Battle summary */}
-          <motion.div
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.6 }}
-            className="glass-card p-4 mb-4"
-          >
+          <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.6 }} className="glass-card p-4 mb-4">
             <p className="text-xs text-muted-foreground mb-3">배틀 요약</p>
-            <div className="grid grid-cols-2 gap-3 text-center">
+            <div className="grid grid-cols-3 gap-3 text-center">
               <div>
                 <p className="text-lg font-bold text-foreground">{battleResult.totalTurns}</p>
                 <p className="text-[10px] text-muted-foreground">총 턴 수</p>
@@ -455,38 +438,60 @@ export default function BattlePage() {
                 </p>
                 <p className="text-[10px] text-muted-foreground">크리티컬</p>
               </div>
+              <div>
+                <p className="text-lg font-bold text-foreground">
+                  {battleResult.turns.filter(t => t.missed).length}
+                </p>
+                <p className="text-[10px] text-muted-foreground">빗나감</p>
+              </div>
             </div>
           </motion.div>
 
           {/* Rewards */}
-          <motion.div
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.8 }}
-            className="glass-card p-4 mb-6"
-          >
+          <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.8 }} className="glass-card p-4 mb-4">
             <p className="text-xs text-muted-foreground mb-3">🎁 보상</p>
-            <div className="flex gap-4 justify-center">
-              <motion.div
-                initial={{ scale: 0 }}
-                animate={{ scale: 1 }}
-                transition={{ delay: 1, type: 'spring' }}
-                className="flex items-center gap-2 rounded-xl bg-secondary/10 px-4 py-2"
-              >
+            <div className="flex flex-wrap gap-3 justify-center">
+              <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }} transition={{ delay: 1, type: 'spring' }} className="flex items-center gap-2 rounded-xl bg-secondary/10 px-4 py-2">
                 <Coins size={16} className="text-secondary" />
-                <span className="font-bold text-secondary">+{battleResult.rewards.coins}</span>
+                <span className="font-bold text-secondary">+{rewards.coins}</span>
               </motion.div>
-              <motion.div
-                initial={{ scale: 0 }}
-                animate={{ scale: 1 }}
-                transition={{ delay: 1.2, type: 'spring' }}
-                className="flex items-center gap-2 rounded-xl bg-accent/10 px-4 py-2"
-              >
+              <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }} transition={{ delay: 1.2, type: 'spring' }} className="flex items-center gap-2 rounded-xl bg-accent/10 px-4 py-2">
                 <Zap size={16} className="text-accent" />
-                <span className="font-bold text-accent">+{battleResult.rewards.exp} EXP</span>
+                <span className="font-bold text-accent">+{rewards.exp} EXP</span>
               </motion.div>
+              {rewards.bonusItems.map((item, i) => (
+                <motion.div key={i} initial={{ scale: 0 }} animate={{ scale: 1 }} transition={{ delay: 1.4 + i * 0.2, type: 'spring' }} className="flex items-center gap-2 rounded-xl bg-primary/10 px-4 py-2">
+                  <Sparkles size={14} className="text-primary" />
+                  <span className="font-bold text-primary">{item.emoji} {item.name} x{item.count}</span>
+                </motion.div>
+              ))}
             </div>
           </motion.div>
+
+          {/* Injury Notice */}
+          {battleResult.playerHpRatios.some(p => p.hpRatio < 1) && (
+            <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 1.5 }} className="glass-card p-3 mb-4 border-amber/30 bg-amber/5">
+              <div className="flex items-center gap-2 mb-2">
+                <AlertTriangle size={14} className="text-amber" />
+                <span className="text-xs font-medium text-foreground">부상 포켓몬</span>
+              </div>
+              <div className="flex gap-2">
+                {battleResult.playerHpRatios.filter(p => p.hpRatio < 1).map(p => {
+                  const member = party.find(m => m.uid === p.uid);
+                  const species = member ? getPokemonById(member.speciesId) : null;
+                  return species ? (
+                    <div key={p.uid} className="flex items-center gap-1 text-[10px]">
+                      <img src={species.spriteUrl} alt={species.name} className="w-6 h-6" style={{ imageRendering: 'pixelated' }} />
+                      <span className={p.hpRatio <= 0 ? 'text-destructive' : 'text-amber'}>
+                        {p.hpRatio <= 0 ? '기절' : `${Math.round(p.hpRatio * 100)}%`}
+                      </span>
+                    </div>
+                  ) : null;
+                })}
+              </div>
+              <p className="text-[9px] text-muted-foreground mt-1">시간이 지나면 자연 회복되거나, 포켓몬 센터에서 즉시 회복하세요</p>
+            </motion.div>
+          )}
 
           <div className="flex gap-3">
             {isAiNpc ? (
@@ -495,8 +500,8 @@ export default function BattlePage() {
               </Button>
             ) : (
               <>
-                <Button variant="outline" onClick={() => navigate('/ranking')} className="flex-1">
-                  <Trophy size={16} className="mr-1.5" /> 랭킹
+                <Button variant="outline" onClick={() => navigate('/home')} className="flex-1">
+                  🏥 포켓몬 센터
                 </Button>
                 <Button onClick={() => { setPhase('select'); setBattleResult(null); }} className="flex-1 gradient-primary text-primary-foreground border-0">
                   다시 배틀
