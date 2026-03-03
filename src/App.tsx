@@ -5,8 +5,8 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import Onboarding from "./pages/Onboarding";
 import Home from "./pages/Home";
-import Routine from "./pages/Routine";
-import RoutineTimer from "./pages/RoutineTimer";
+import Running from "./pages/Running";
+import RunningHistory from "./pages/RunningHistory";
 import Pokedex from "./pages/Pokedex";
 import Settings from "./pages/Settings";
 import NotFound from "./pages/NotFound";
@@ -28,8 +28,8 @@ const App = () => (
         <Routes>
           <Route path="/" element={<RootRedirect />} />
           <Route path="/home" element={<Home />} />
-          <Route path="/routine" element={<Routine />} />
-          <Route path="/timer" element={<RoutineTimer />} />
+          <Route path="/run" element={<Running />} />
+          <Route path="/history" element={<RunningHistory />} />
           <Route path="/pokedex" element={<Pokedex />} />
           <Route path="/settings" element={<Settings />} />
           <Route path="*" element={<NotFound />} />
