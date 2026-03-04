@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Lock, Unlock, Pause, Square } from 'lucide-react';
 import { formatDuration, formatPace } from '@/lib/running';
 import { getPokemonById } from '@/lib/pokemon-registry';
+import { calculateAutoMultiplier, getNextTier } from '@/lib/auto-multiplier';
 
 interface RunningAmoledScreenProps {
   elapsed: number;
@@ -18,6 +19,9 @@ interface RunningAmoledScreenProps {
   legendaryMissionName?: string;
   legendaryMissionTargetKm?: number;
   legendaryMissionProgress?: number;
+  streakDays?: number;
+  estimatedExp?: number;
+  estimatedCoins?: number;
 }
 
 export default function RunningAmoledScreen({
@@ -34,6 +38,9 @@ export default function RunningAmoledScreen({
   legendaryMissionName,
   legendaryMissionTargetKm,
   legendaryMissionProgress,
+  streakDays = 0,
+  estimatedExp = 0,
+  estimatedCoins = 0,
 }: RunningAmoledScreenProps) {
   const [isLocked, setIsLocked] = useState(true);
   const [unlockProgress, setUnlockProgress] = useState(0);
@@ -120,6 +127,51 @@ export default function RunningAmoledScreen({
           {pace ? formatPace(pace) : "-'--\""}
           <span className="text-white/30 text-lg ml-1">/km</span>
         </p>
+
+        {/* Real-time reward counters (FIX #4) */}
+        <div className="flex items-center gap-4 mt-4">
+          <div className="flex items-center gap-1.5">
+            <span className="text-lg">⚡</span>
+            <motion.span
+              key={estimatedExp}
+              initial={{ scale: 1.1 }}
+              animate={{ scale: 1 }}
+              className="text-white/70 text-sm font-bold tabular-nums"
+            >
+              {estimatedExp}
+            </motion.span>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <span className="text-lg">🪙</span>
+            <motion.span
+              key={estimatedCoins}
+              initial={{ scale: 1.1 }}
+              animate={{ scale: 1 }}
+              className="text-white/70 text-sm font-bold tabular-nums"
+            >
+              {estimatedCoins}
+            </motion.span>
+          </div>
+          {(() => {
+            const mult = calculateAutoMultiplier(distanceKm, streakDays);
+            return mult.exp > 1 ? (
+              <div className="flex items-center gap-1">
+                <span className="text-sm">{mult.emoji}</span>
+                <span className="text-white/50 text-xs font-bold">×{mult.exp.toFixed(1)}</span>
+              </div>
+            ) : null;
+          })()}
+        </div>
+
+        {/* Next multiplier tier hint */}
+        {(() => {
+          const next = getNextTier(distanceKm);
+          return next ? (
+            <p className="text-white/20 text-[10px] mt-2 tabular-nums">
+              {next.km}km 달성 시 ×{next.mult} 배율
+            </p>
+          ) : null;
+        })()}
 
         {/* Legendary mission progress */}
         {legendaryMissionName && legendaryMissionTargetKm && (

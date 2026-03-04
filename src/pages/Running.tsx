@@ -9,7 +9,7 @@ import { GpsTracker, type GpsPoint } from '@/lib/gps-tracker';
 import { validateRunSession } from '@/lib/activity-validator';
 import { calculateRunRewards, type RunRewards } from '@/lib/running-rewards';
 import { recordRunForStreak, getRunningStreak, saveRunRecord, type StreakMilestone } from '@/lib/running-streak';
-import { calculateAutoMultiplier, checkMultiplierMilestone } from '@/lib/auto-multiplier';
+import { calculateAutoMultiplier, checkMultiplierMilestone, getNextTier } from '@/lib/auto-multiplier';
 import { getCompanionDialogue, getRunningCheer } from '@/lib/companion-dialogue';
 import { getMoodForSteps, getMoodEmoji as getCompanionMoodEmoji, getCheerMessage, type CompanionMood } from '@/lib/pokemon-companion';
 import { updateBondAfterRun, getBondState, getMoodEmoji as getBondMoodEmoji } from '@/lib/pokemon-bond';
@@ -57,7 +57,7 @@ import RunningAmoledScreen from '@/components/running/RunningAmoledScreen';
 import LegendaryStoryIntro from '@/components/running/LegendaryStoryIntro';
 import LegendaryCutscene from '@/components/running/LegendaryCutscene';
 import EncounterPokemonCard from '@/components/running/EncounterPokemonCard';
-
+import RewardMiniCards from '@/components/running/RewardMiniCards';
 type RunState = 'idle' | 'countdown' | 'legendaryIntro' | 'running' | 'paused' | 'completed' | 'legendaryCutscene';
 
 // 목표 유형
@@ -153,19 +153,34 @@ export default function RunningPage() {
     return () => { if (timerRef.current) clearInterval(timerRef.current); };
   }, [runState]);
 
-  // Companion cheers + milestone checks
+  // Companion cheers using dialogue system (FIX #5)
   useEffect(() => {
     if (runState === 'running') {
       cheerRef.current = setInterval(() => {
         const mood = getMoodForSteps(stepsRef.current);
         setCompanionMood(mood);
-        setCheerMessage(getCheerMessage(mood));
+        const runCheer = getRunningCheer(leaderSpecies?.name || '포켓몬', stepsRef.current, bond.friendship);
+        setCheerMessage(runCheer);
       }, 10000);
     } else {
       if (cheerRef.current) clearInterval(cheerRef.current);
     }
     return () => { if (cheerRef.current) clearInterval(cheerRef.current); };
-  }, [runState]);
+  }, [runState, bond.friendship]);
+
+  // Multiplier milestone toasts during running (FIX #4)
+  useEffect(() => {
+    if (runState !== 'running') return;
+    const dist = stepsToKm(steps, true);
+    const milestone = checkMultiplierMilestone(dist, multiplierShownRef.current);
+    if (milestone) {
+      toast(`${milestone.emoji} ${milestone.label}`, {
+        description: `보상 배율 ×${milestone.mult} 적용!`,
+        duration: 4000,
+      });
+      if ('vibrate' in navigator) navigator.vibrate([200, 100, 200]);
+    }
+  }, [steps, runState]);
 
   // Step milestones during running
   useEffect(() => {
@@ -703,37 +718,55 @@ export default function RunningPage() {
             </div>
           </div>
 
-          {/* Goal achievement */}
+          {/* Auto-multiplier achievement (FIX #3) */}
           {completedData.goalAchieved && completedData.goalBonus > 1 && (
             <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} transition={{ delay: 0.3 }} className="glass-card p-3 mb-4 border border-secondary/30 text-center">
-              <span className="text-lg">🎯</span>
-              <p className="text-sm font-bold text-secondary">목표 달성! 보상 ×{completedData.goalBonus}</p>
+              <span className="text-lg">{calculateAutoMultiplier(completedData.distanceKm, streak.currentStreak).emoji}</span>
+              <p className="text-sm font-bold text-secondary">
+                {calculateAutoMultiplier(completedData.distanceKm, streak.currentStreak).label}
+              </p>
+              <p className="text-xs text-muted-foreground mt-0.5">보상 ×{completedData.goalBonus.toFixed(1)} 적용</p>
             </motion.div>
           )}
 
-          {/* Rewards */}
-          <div className="glass-card p-4 mb-4">
-            <p className="text-xs text-muted-foreground mb-3">🎁 획득 보상</p>
-            <div className="flex gap-3 justify-center flex-wrap">
-              <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }} transition={{ delay: 0.5, type: 'spring' }} className="flex items-center gap-2 rounded-xl bg-primary/10 px-4 py-2">
-                <span className="text-lg">⚡</span>
-                <span className="font-bold text-primary">+{completedData.rewards.exp} EXP</span>
+          {/* Sequential reward cards (FIX #4) */}
+          <div className="space-y-2 mb-4">
+            {[
+              { icon: '🏃', label: '거리', value: `${completedData.distanceKm.toFixed(2)} km`, delay: 0.4, bg: 'bg-muted/50' },
+              { icon: '⚡', label: 'EXP', value: `+${completedData.rewards.exp}`, delay: 0.55, bg: 'bg-primary/10' },
+              { icon: '🪙', label: '코인', value: `+${completedData.rewards.coins}`, delay: 0.7, bg: 'bg-secondary/10' },
+              { icon: '💚', label: '컨디션', value: `+${completedData.conditionRecovery}`, delay: 0.85, bg: 'bg-heal/10' },
+              { icon: '💕', label: '친밀도', value: `+${completedData.friendshipGain}`, delay: 1.0, bg: 'bg-accent/10' },
+            ].map(card => (
+              <motion.div
+                key={card.label}
+                initial={{ opacity: 0, x: -30 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ delay: card.delay, type: 'spring', stiffness: 200 }}
+                className={`flex items-center justify-between rounded-2xl ${card.bg} px-4 py-3`}
+              >
+                <div className="flex items-center gap-2">
+                  <span className="text-lg">{card.icon}</span>
+                  <span className="text-sm text-muted-foreground">{card.label}</span>
+                </div>
+                <span className="text-sm font-bold text-foreground">{card.value}</span>
               </motion.div>
-              <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }} transition={{ delay: 0.6, type: 'spring' }} className="flex items-center gap-2 rounded-xl bg-secondary/10 px-4 py-2">
-                <span className="text-lg">🪙</span>
-                <span className="font-bold text-secondary">+{completedData.rewards.coins}</span>
-              </motion.div>
-            </div>
-            <div className="flex gap-3 justify-center flex-wrap mt-2">
-              <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }} transition={{ delay: 0.7, type: 'spring' }} className="flex items-center gap-2 rounded-xl bg-heal/10 px-3 py-1.5">
-                <span className="text-sm">💚</span>
-                <span className="text-xs font-bold text-heal">컨디션 +{completedData.conditionRecovery}</span>
-              </motion.div>
-              <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }} transition={{ delay: 0.8, type: 'spring' }} className="flex items-center gap-2 rounded-xl bg-accent/10 px-3 py-1.5">
-                <span className="text-sm">💕</span>
-                <span className="text-xs font-bold text-accent">친밀도 +{completedData.friendshipGain}</span>
-              </motion.div>
-            </div>
+            ))}
+
+            {/* Next multiplier hint */}
+            {(() => {
+              const next = getNextTier(completedData.distanceKm);
+              return next ? (
+                <motion.div
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  transition={{ delay: 1.15 }}
+                  className="text-center text-[11px] text-muted-foreground/60 mt-1"
+                >
+                  💡 {next.km}km 달성 시 ×{next.mult} 배율 적용
+                </motion.div>
+              ) : null;
+            })()}
           </div>
 
           {/* Milestones */}
@@ -930,6 +963,9 @@ export default function RunningPage() {
           legendaryMissionName={legendaryStoryMission?.pokemonName}
           legendaryMissionTargetKm={legendaryStoryMission?.targetKm}
           legendaryMissionProgress={legendaryStoryMission ? getLegendaryMissionProgress(legendaryStoryMission, currentDistance) : undefined}
+          streakDays={streak.currentStreak}
+          estimatedExp={Math.floor(steps / 10)}
+          estimatedCoins={Math.floor(steps / 200)}
         />
       )}
       <div className="mx-auto max-w-md px-5 pt-8">
@@ -995,10 +1031,26 @@ export default function RunningPage() {
               <p className="text-lg font-semibold text-foreground mb-1">
                 {getBondMoodEmoji(bond.mood)} {leaderSpecies?.name || '포켓몬'}와 함께 달려볼까?
               </p>
-              <p className="text-sm text-muted-foreground mb-4">걸음수로 컨디션을 올리고 포켓몬을 성장시키세요</p>
+              <p className="text-sm text-muted-foreground mb-4">
+                {getCompanionDialogue({
+                  pokemonName: leaderSpecies?.name || '포켓몬',
+                  friendship: bond.friendship,
+                  condition: condition.condition,
+                  timeOfDay: (() => { const h = new Date().getHours(); if (h >= 5 && h < 12) return 'morning' as const; if (h >= 12 && h < 17) return 'afternoon' as const; if (h >= 17 && h < 21) return 'evening' as const; return 'night' as const; })(),
+                  streakDays: streak.currentStreak,
+                  stepsToday: getTodaySteps(),
+                })}
+              </p>
+
+              {/* RewardMiniCards (FIX #4) */}
+              <RewardMiniCards
+                streakDays={streak.currentStreak}
+                condition={condition.condition}
+                friendship={bond.friendship}
+              />
 
               {/* Today steps + streak */}
-              <div className="flex items-center justify-center gap-4 text-sm">
+              <div className="flex items-center justify-center gap-4 text-sm mt-3">
                 {getTodaySteps() > 0 && (
                   <span className="text-muted-foreground">오늘 {getTodaySteps().toLocaleString()}보</span>
                 )}
@@ -1106,12 +1158,18 @@ export default function RunningPage() {
         {runState === 'idle' && (
           <>
             <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }} className="mt-6 glass-card p-4">
-              <p className="text-xs text-muted-foreground mb-2">💡 걸음수 보상</p>
-              <div className="space-y-1 text-sm text-muted-foreground">
-                <p>👟 1000보 = EXP 100 + 코인 5</p>
-                <p>💚 컨디션 회복: 100보당 +1 (하루 최대 +50)</p>
-                <p>💕 친밀도: 500보당 +5 (하루 최대 +100)</p>
-                <p>⚡ 페이스/스트릭 보너스 별도 적용</p>
+              <p className="text-xs text-muted-foreground mb-2">🎯 자동 배율 시스템</p>
+              <div className="space-y-1.5 text-sm text-muted-foreground">
+                <div className="flex items-center justify-between"><span>👟 1km</span><span className="font-bold text-foreground">×1.1</span></div>
+                <div className="flex items-center justify-between"><span>⚡ 3km</span><span className="font-bold text-foreground">×1.3</span></div>
+                <div className="flex items-center justify-between"><span>🔥 5km</span><span className="font-bold text-foreground">×1.5</span></div>
+                <div className="flex items-center justify-between"><span>🏆 10km</span><span className="font-bold text-foreground">×2.0</span></div>
+                {streak.currentStreak >= 3 && (
+                  <div className="flex items-center justify-between border-t border-border/30 pt-1 mt-1">
+                    <span>🔥 {streak.currentStreak}일 연속 보너스</span>
+                    <span className="font-bold text-primary">+{streak.currentStreak >= 7 ? '0.3' : '0.15'}</span>
+                  </div>
+                )}
               </div>
             </motion.div>
             <LegendaryPreview />
