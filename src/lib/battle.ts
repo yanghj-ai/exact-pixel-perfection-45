@@ -300,6 +300,73 @@ export function executeTurn(state: TurnBasedBattleState, playerMove: BattleMove)
   return newTurns;
 }
 
+/** Execute a switch turn: player switches pokemon, opponent gets a free attack */
+export function executeSwitchTurn(state: TurnBasedBattleState, newPlayerIdx: number): BattleTurnLog[] {
+  const newTurns: BattleTurnLog[] = [];
+  const opponent = state.opponentTeam[state.opponentIdx];
+  const oldPlayer = state.playerTeam[state.playerIdx];
+
+  if (!opponent || !oldPlayer || newPlayerIdx < 0 || newPlayerIdx >= state.playerTeam.length) return newTurns;
+  if (state.playerTeam[newPlayerIdx].currentHp <= 0) return newTurns;
+
+  // Switch the player's active pokemon
+  state.playerIdx = newPlayerIdx;
+  state.turnCount++;
+
+  const newPlayer = state.playerTeam[state.playerIdx];
+
+  // Create a switch log entry (no damage, just informational)
+  const switchLog: BattleTurnLog = {
+    turn: state.turnCount,
+    attackerUid: oldPlayer.uid,
+    defenderUid: newPlayer.uid,
+    move: { name: '교체', type: 'normal', power: 0, accuracy: 100, emoji: '🔄', learnLevel: 0, category: 'physical', description: '포켓몬을 교체한다' },
+    damage: 0,
+    effectiveness: 1,
+    critical: false,
+    missed: false,
+    statusApplied: null,
+    healAmount: 0,
+    defenderHpAfter: newPlayer.currentHp,
+    defenderFainted: false,
+    message: `${oldPlayer.nickname || oldPlayer.name}에서 ${newPlayer.nickname || newPlayer.name}(으)로 교체!`,
+  };
+  newTurns.push(switchLog);
+  state.turns.push(switchLog);
+
+  // Opponent gets a free attack on the new pokemon
+  const canAct = (p: BattlePokemon) => {
+    if (p.status === 'freeze' && Math.random() > 0.1) return false;
+    if (p.status === 'paralyze' && Math.random() < 0.25) return false;
+    return true;
+  };
+
+  if (canAct(opponent)) {
+    const opponentMove = chooseNpcMove(opponent, newPlayer);
+    const attackLog = doAttack(opponent, newPlayer, state.turnCount, false, opponentMove);
+    newTurns.push(attackLog);
+    state.turns.push(attackLog);
+
+    if (attackLog.defenderFainted) {
+      // Find next alive player pokemon
+      const nextAlive = state.playerTeam.findIndex((p, i) => i !== state.playerIdx && p.currentHp > 0);
+      if (nextAlive === -1) {
+        state.phase = 'finished';
+        state.winner = 'opponent';
+      } else {
+        state.playerIdx = nextAlive;
+      }
+    }
+  }
+
+  if (state.turnCount >= 200) {
+    state.phase = 'finished';
+    state.winner = 'opponent';
+  }
+
+  return newTurns;
+}
+
 /** Calculate rewards after battle ends */
 export function calculateBattleRewards(
   state: TurnBasedBattleState,
