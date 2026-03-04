@@ -1,87 +1,54 @@
 
 
-# 거리 기반 포켓몬 조우 + 포획 조건 퀘스트 시스템
+# FIX #6: 전설 포켓몬 5종 스토리 미션 시스템
 
-## 현재 상태
-- 전설 포켓몬은 **GPS 핫스팟 기반** (특정 좌표 근처에서만 조우)
-- 일반 포켓몬은 `triggerEncounter()`로 거리 비례 확률 조우 (포획 조건 없음, 즉시 포획)
-- 챌린지 시스템 존재 (streak, distance, pace, count 타입)
+## 요약
 
-## 설계
+기존 `legendary.ts`의 단순 거리 기반 조우 조건을 **챌린지 완료 기반 스토리 해금** 시스템으로 전환합니다. 각 전설 포켓몬은 특정 챌린지 조합을 완료해야 해금되며, 해금 후 런닝 시작 시 스토리 연출과 함께 포획 미션이 발동됩니다.
 
-### 1. 일반 포켓몬 포획 퀘스트 시스템 (`src/lib/catch-quest.ts` 신규)
+## 문서 스펙 (FIX #6)
 
-조우 시 즉시 포획이 아닌, **포획 조건 퀘스트**가 부여됨:
-
-| 포켓몬 등급 | 조우 조건 | 포획 퀘스트 예시 |
+| 포켓몬 | 해금 조건 | 포획 미션 |
 |---|---|---|
-| common | 1km 달리기 | "0.5km 더 달리기" |
-| uncommon | 2km 달리기 | "1km 더 달리기" or "8분/km 이내 페이스" |
-| rare | 3km 달리기 | "2km 더 달리기" or "7분/km 이내 페이스" |
-| epic | 5km 달리기 | "3km 더 달리기 + 7분/km 이내" |
+| 프리져 (144) | SP1(얼리버드) + S2(7일연속) 완료 | 새벽 5km 완주 |
+| 썬더 (145) | SP3(스피드스터) + D3(5km러너) 완료 | 3km, 페이스 4:30/km 이하 |
+| 파이어 (146) | S4(30일연속) + D4(10km정복) 완료 | 10km 완주 |
+| 뮤 (151) | 전 챌린지 100% 달성 | 배틀 없이 합류 (자동 포획) |
+| 뮤츠 (150) | 뮤 보유 + T4(500km) 완료 + 유전자 촉매 사용 | 10km 특별 런닝 |
 
-조우 후 런닝 화면에 퀘스트 진행률 표시, 조건 달성 시 포획 확정.
+## 변경 사항
 
-### 2. 전설 포켓몬 특수 조건 (기존 `legendary.ts` 확장)
+### 1. `src/lib/legendary.ts` 수정
+- **LEGENDARY_DEFS** 업데이트: 각 포켓몬의 `encounterCondition`과 `mission` requirements를 문서 스펙대로 변경
+  - 프리져: 5km distance mission (기존 3km+15분 → 5km)
+  - 썬더: 3km + pace 4:30 (기존 2km + pace 6:00 → 3km + pace 4:30)
+  - 파이어: 10km distance (기존 5km → 10km)
+  - 뮤: 자동 포획이므로 mission을 최소 조건(0.1km)으로 설정
+  - 뮤츠: 10km distance (기존과 유사하지만 조건 단순화)
+- **`checkLegendaryEncounterConditions()`** 수정: 거리 기반 → 챌린지 완료 여부 체크로 전환
+  - `getChallengeState()`를 import하여 특정 챌린지 ID 완료 여부 확인
+  - 뮤: 모든 챌린지(26개) 100% 완료 체크
+  - 뮤츠: 뮤 보유 + T4 완료 + 유전자 촉매(인벤토리) 사용 체크
+- **스토리 텍스트** 추가: 각 LegendaryDefinition에 `storyIntro` (조우 시 연출 메시지), `storyOutro` (포획 시 메시지) 필드 추가
+- **SPECIAL_EVENTS 제거**: 이브이/라프라스/잠만보/메타몽은 더 이상 special event가 아닌 일반 등급 시스템(spawn-data.ts)에서 처리되므로 제거
 
-GPS 핫스팟 제거 → **거리 + 특수 조건 기반**으로 전환:
+### 2. `src/lib/challenge.ts` 수정
+- `isChallengeCompleted(id: string): boolean` 헬퍼 함수 export 추가
+- `areAllChallengesCompleted(): boolean` 헬퍼 함수 export 추가
 
-| 포켓몬 | 조우 조건 | 포획 조건 |
-|---|---|---|
-| 프리져 (144) | 총 누적 50km | 한 세션 3km + 15분 이상 |
-| 썬더 (145) | 총 누적 100km | 한 세션 2km + 페이스 6분/km 이하 |
-| 파이어 (146) | 총 누적 150km | 한 세션 5km |
-| 뮤츠 (150) | **모든 챌린지 완료** | 한 세션 10km or 페이스 5분/km 이하로 5km |
-| 뮤 (151) | **총 누적 1500km** | 한 세션 3km (특별 연출) |
+### 3. `src/components/running/LegendaryPreview.tsx` 수정
+- 스토리 힌트와 해금 조건 표시 개선 (어떤 챌린지가 필요한지 표시)
+- SPECIAL_EVENTS 제거에 따른 이벤트 섹션 제거
 
-### 3. 특수 이벤트 조우 추가
+### 4. `src/pages/Running.tsx` 수정
+- 전설 조우 시 스토리 메시지(storyIntro) 표시
+- 뮤 조우 시 자동 포획 처리 (미션 스킵)
+- 포획 성공 시 스토리 메시지(storyOutro) 표시
+- `checkSpecialEventConditions` 호출 제거
 
-- **이브이 (133)**: 연속 출석 7일 → 조우
-- **라프라스 (131)**: 주간 목표 3주 연속 달성 → 조우
-- **잠만보 (143)**: 총 세션 50회 달성 → 조우
-- **메타몽 (132)**: 도감 50종 이상 등록 → 조우
+### 5. `src/components/running/RunningBanners.tsx` 수정
+- LegendaryBanner에 스토리 메시지 표시 영역 추가
 
-### 4. 수정 파일 목록
-
-| 파일 | 변경 내용 |
-|---|---|
-| `src/lib/catch-quest.ts` | **신규** — 포획 퀘스트 타입, 생성, 진행률 체크, 완료 로직 |
-| `src/lib/legendary.ts` | GPS 핫스팟 → 거리/챌린지 기반 조건으로 전환, 특수 이벤트 목록 추가 |
-| `src/lib/collection.ts` | `triggerEncounter()` → 즉시 포획 대신 퀘스트 반환, 이벤트 조우 체크 함수 추가 |
-| `src/pages/Running.tsx` | 조우 시 포획 퀘스트 배너 UI, 진행률 표시, 포획 성공 연출 |
-| `src/pages/Pokedex.tsx` | 전설/이벤트 포켓몬 조우 조건 힌트 표시 |
-| `src/components/CatchQuestBanner.tsx` | **신규** — 런닝 중 포획 퀘스트 진행률 배너 컴포넌트 |
-| `src/components/SpecialEncounterOverlay.tsx` | **신규** — 특수 조우/포획 성공 연출 오버레이 |
-
-### 5. 데이터 구조
-
-```text
-CatchQuest {
-  id: string
-  speciesId: number
-  encounterDistanceKm: number   // 조우 시점 거리
-  questType: 'distance' | 'pace' | 'time' | 'combo'
-  requirements: { type, target, unit }[]
-  startedAt: number
-  completed: boolean
-}
-
-SpecialEvent {
-  id: string
-  speciesId: number
-  condition: 'total_distance' | 'all_challenges' | 'streak' | 'weekly_goal_streak' | 'session_count' | 'pokedex_count'
-  targetValue: number
-  description: string
-  hint: string
-}
-```
-
-### 6. 흐름
-
-1. 런닝 중 거리 도달 → `checkEncounter(distanceKm)` → 포켓몬 조우
-2. 조우 시 등급에 맞는 `CatchQuest` 자동 생성
-3. 런닝 화면에 퀘스트 배너 표시 (진행률 바)
-4. 퀘스트 조건 달성 → 포획 연출 + 컬렉션 등록
-5. 런닝 종료 시 미완료 퀘스트는 실패 처리
-6. 전설/이벤트는 홈 또는 도감에서 조건 확인 가능, 조건 달성 시 런닝 시작 시 자동 조우
+### 6. `src/pages/Pokedex.tsx` 수정
+- 전설 포켓몬 상세에서 스토리 힌트와 해금에 필요한 챌린지 목록 표시
 
