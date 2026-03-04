@@ -99,23 +99,23 @@ export default function BattlePage() {
     }, 2500);
   }, [party]);
 
-  // Animation sub-phase: 'move_announce' → 'hit_effect' → 'result_msg' per log
-  const [animSubPhase, setAnimSubPhase] = useState<'move_announce' | 'hit_effect' | 'result_msg'>('move_announce');
+  // Animation: 2-phase per attack — 'attack' (announce+hit) → 'result' (HP drain+messages)
+  const [animSubPhase, setAnimSubPhase] = useState<'attack' | 'result'>('attack');
+  // Snapshot HP before current log's damage for smooth HP drain
+  const [hpSnapshot, setHpSnapshot] = useState<Record<string, number>>({});
 
-  // Animate turn logs sequentially with sub-phases for clarity
   useEffect(() => {
     if (!isAnimating || currentTurnLogs.length === 0) return;
     
     if (animatingTurnIdx >= currentTurnLogs.length) {
-      // All logs for this turn animated — check for faint/finish
-      const lastLog = currentTurnLogs[currentTurnLogs.length - 1];
+      // All attacks animated for this turn
       const hasFaint = currentTurnLogs.some(l => l.defenderFainted);
       
       const timer = setTimeout(() => {
         setIsAnimating(false);
+        setHpSnapshot({});
         
         if (battleState?.phase === 'finished') {
-          // Show faint message briefly before result
           if (hasFaint) {
             const faintLog = currentTurnLogs.find(l => l.defenderFainted)!;
             const faintedIsPlayer = !faintLog.defenderUid.startsWith('npc_');
@@ -125,11 +125,7 @@ export default function BattlePage() {
             const faintedName = faintedPokemon?.nickname || faintedPokemon?.name || '???';
             setSwitchMessage(`${faintedIsPlayer ? '' : '상대의 '}${faintedName}이(가) 쓰러졌다!`);
             setPhase('switching');
-            setTimeout(() => {
-              setSwitchMessage('');
-              finishBattle();
-              setPhase('result');
-            }, 2000);
+            setTimeout(() => { setSwitchMessage(''); finishBattle(); setPhase('result'); }, 2000);
           } else {
             finishBattle();
           }
@@ -147,51 +143,50 @@ export default function BattlePage() {
             const faintedName = faintedPokemon?.nickname || faintedPokemon?.name || '???';
             const nextName = nextPokemon.nickname || nextPokemon.name;
             
-            // Phase 1: Show faint message
-            setSwitchMessage(
-              isPlayerFainted 
-                ? `${faintedName}이(가) 쓰러졌다!`
-                : `상대의 ${faintedName}이(가) 쓰러졌다!`
-            );
+            setSwitchMessage(isPlayerFainted ? `${faintedName}이(가) 쓰러졌다!` : `상대의 ${faintedName}이(가) 쓰러졌다!`);
             setPhase('switching');
             setTimeout(() => {
-              // Phase 2: Show next pokemon announcement
-              setSwitchMessage(
-                isPlayerFainted 
-                  ? `가라, ${nextName}!`
-                  : `상대는 ${nextName}을(를) 내보냈다!`
-              );
-              setTimeout(() => {
-                setPhase('fighting');
-                setSwitchMessage('');
-              }, 2000);
-            }, 2000);
+              setSwitchMessage(isPlayerFainted ? `가라, ${nextName}!` : `상대는 ${nextName}을(를) 내보냈다!`);
+              setTimeout(() => { setPhase('fighting'); setSwitchMessage(''); }, 1800);
+            }, 1800);
           }
         }
-      }, 1200);
+      }, 800);
       return () => clearTimeout(timer);
     }
 
-    // Sub-phase progression for each log entry
     const log = currentTurnLogs[animatingTurnIdx];
     if (!log) return;
 
-    if (animSubPhase === 'move_announce') {
-      // Show "X used Y!" for 1.2s, then show hit
-      const timer = setTimeout(() => setAnimSubPhase('hit_effect'), 1200);
+    if (animSubPhase === 'attack') {
+      // Phase 1: "X의 Y!" + attack anim (1s), then show result
+      const timer = setTimeout(() => {
+        setAnimSubPhase('result');
+        // Remove HP snapshot so HP bar animates down
+        setHpSnapshot(prev => {
+          const next = { ...prev };
+          delete next[log.defenderUid];
+          return next;
+        });
+      }, 1000);
       return () => clearTimeout(timer);
     }
-    if (animSubPhase === 'hit_effect') {
-      // Show damage/effect for 1.2s, then show result
-      const timer = setTimeout(() => setAnimSubPhase('result_msg'), 1200);
-      return () => clearTimeout(timer);
-    }
-    if (animSubPhase === 'result_msg') {
-      // Show result for 1.5s (longer if faint), then move to next log
-      const delay = log.defenderFainted ? 2000 : 1500;
+    if (animSubPhase === 'result') {
+      // Phase 2: show damage + effects (1.2s normal, 1.8s if faint)
+      const delay = log.defenderFainted ? 1800 : 1200;
       const timer = setTimeout(() => {
         setAnimatingTurnIdx(i => i + 1);
-        setAnimSubPhase('move_announce');
+        setAnimSubPhase('attack');
+        // Snapshot HP for next log entry
+        if (animatingTurnIdx + 1 < currentTurnLogs.length) {
+          const nextLog = currentTurnLogs[animatingTurnIdx + 1];
+          // Save current defender HP before next attack applies
+          const defenderTeam = nextLog.defenderUid.startsWith('npc_') ? battleState?.opponentTeam : battleState?.playerTeam;
+          const defender = defenderTeam?.find(p => p.uid === nextLog.defenderUid);
+          if (defender) {
+            setHpSnapshot(prev => ({ ...prev, [nextLog.defenderUid]: defender.currentHp + nextLog.damage }));
+          }
+        }
       }, delay);
       return () => clearTimeout(timer);
     }
@@ -203,12 +198,28 @@ export default function BattlePage() {
   const handleMoveSelect = (move: BattleMove) => {
     if (!battleState || isAnimating || battleState.phase === 'finished') return;
 
+    // Snapshot HP before turn execution for smooth HP drain animation
+    const snap: Record<string, number> = {};
+    const player = battleState.playerTeam[battleState.playerIdx];
+    const opp = battleState.opponentTeam[battleState.opponentIdx];
+    if (player) snap[player.uid] = player.currentHp;
+    if (opp) snap[opp.uid] = opp.currentHp;
+
     const turnLogs = executeTurn(battleState, move);
+    
+    // Set snapshot for first log's defender
+    if (turnLogs.length > 0) {
+      const firstDefender = turnLogs[0].defenderUid;
+      if (snap[firstDefender] !== undefined) {
+        setHpSnapshot({ [firstDefender]: snap[firstDefender] });
+      }
+    }
+
     setBattleState({ ...battleState });
     setCurrentTurnLogs(turnLogs);
     setAllTurnLogs(prev => [...prev, ...turnLogs]);
     setAnimatingTurnIdx(0);
-    setAnimSubPhase('move_announce');
+    setAnimSubPhase('attack');
     setIsAnimating(true);
     setShowSwitchPanel(false);
   };
@@ -217,12 +228,21 @@ export default function BattlePage() {
     if (!battleState || isAnimating || battleState.phase === 'finished') return;
     if (teamIdx === battleState.playerIdx) return;
 
+    const snap: Record<string, number> = {};
+    const newPlayer = battleState.playerTeam[teamIdx];
+    if (newPlayer) snap[newPlayer.uid] = newPlayer.currentHp;
+
     const turnLogs = executeSwitchTurn(battleState, teamIdx);
+
+    if (turnLogs.length > 1) {
+      setHpSnapshot({ [turnLogs[1].defenderUid]: snap[turnLogs[1].defenderUid] || newPlayer?.currentHp || 0 });
+    }
+
     setBattleState({ ...battleState });
     setCurrentTurnLogs(turnLogs);
     setAllTurnLogs(prev => [...prev, ...turnLogs]);
     setAnimatingTurnIdx(0);
-    setAnimSubPhase('move_announce');
+    setAnimSubPhase('attack');
     setIsAnimating(true);
     setShowSwitchPanel(false);
   };
@@ -683,64 +703,65 @@ export default function BattlePage() {
             <div />
             {opponent && (
               <motion.div
+                key={`opp-${opponent.uid}`}
                 animate={
-                  currentLog && animSubPhase === 'hit_effect' && currentLog.defenderUid === opponent.uid && !currentLog.missed 
-                    ? { x: [0, 8, -8, 4, -4, 0], opacity: [1, 0.5, 1] } 
-                    : currentLog && animSubPhase === 'move_announce' && currentLog.attackerUid === opponent.uid
-                    ? { y: [0, -5, 0] }
+                  currentLog && animSubPhase === 'attack' && currentLog.attackerUid === opponent.uid
+                    ? { x: [0, -15, 0], transition: { duration: 0.3 } }
+                    : currentLog && animSubPhase === 'result' && currentLog.defenderUid === opponent.uid && !currentLog.missed
+                    ? { x: [0, 6, -6, 3, 0], opacity: [1, 0.4, 1, 0.6, 1] }
+                    : currentLog && currentLog.defenderFainted && currentLog.defenderUid === opponent.uid && animSubPhase === 'result'
+                    ? { y: 40, opacity: 0, transition: { duration: 0.6 } }
                     : {}
                 }
-                transition={{ duration: 0.4 }}
+                transition={{ duration: 0.35 }}
               >
                 <img src={opponent.spriteUrl} alt={opponent.name} className="w-24 h-24 object-contain" style={{ imageRendering: 'pixelated' }} />
               </motion.div>
             )}
             {player && (
               <motion.div
+                key={`plr-${player.uid}`}
                 className="absolute bottom-4 left-4"
                 animate={
-                  currentLog && animSubPhase === 'move_announce' && currentLog.attackerUid === player.uid
-                    ? { y: [0, -5, 0] }
-                    : currentLog && animSubPhase === 'hit_effect' && currentLog.defenderUid === player.uid && !currentLog.missed
-                    ? { x: [0, -8, 8, -4, 4, 0], opacity: [1, 0.5, 1] }
+                  currentLog && animSubPhase === 'attack' && currentLog.attackerUid === player.uid
+                    ? { x: [0, 15, 0], transition: { duration: 0.3 } }
+                    : currentLog && animSubPhase === 'result' && currentLog.defenderUid === player.uid && !currentLog.missed
+                    ? { x: [0, -6, 6, -3, 0], opacity: [1, 0.4, 1, 0.6, 1] }
+                    : currentLog && currentLog.defenderFainted && currentLog.defenderUid === player.uid && animSubPhase === 'result'
+                    ? { y: 40, opacity: 0, transition: { duration: 0.6 } }
                     : {}
                 }
-                transition={{ duration: 0.4 }}
+                transition={{ duration: 0.35 }}
               >
                 <img src={player.spriteUrl} alt={player.name} className="w-20 h-20 object-contain" style={{ imageRendering: 'pixelated' }} />
               </motion.div>
             )}
 
-            {/* Move effect emoji — only during hit phase */}
+            {/* Move effect emoji — shows during attack phase on defender side */}
             <AnimatePresence>
-              {currentLog && animSubPhase === 'hit_effect' && !currentLog.missed && (
+              {currentLog && animSubPhase === 'attack' && !currentLog.missed && currentLog.damage > 0 && (
                 <motion.div
-                  key={`eff-${allTurnLogs.length}-${animatingTurnIdx}-hit`}
-                  initial={{ opacity: 0, scale: 0.3, rotate: -20 }}
-                  animate={{ opacity: 1, scale: 1.2, rotate: 0 }}
+                  key={`eff-${allTurnLogs.length}-${animatingTurnIdx}`}
+                  initial={{ opacity: 0, scale: 0.3 }}
+                  animate={{ opacity: 1, scale: 1.3 }}
                   exit={{ opacity: 0, scale: 0.5 }}
-                  transition={{ type: 'spring', damping: 12 }}
-                  className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2"
+                  transition={{ type: 'spring', damping: 10, delay: 0.4 }}
+                  className={`absolute ${currentLog.defenderUid.startsWith('npc_') ? 'top-1/3 right-1/4' : 'bottom-1/3 left-1/4'}`}
                 >
-                  <span className="text-4xl drop-shadow-lg">{currentLog.move.emoji}</span>
-                  {currentLog.effectiveness > 1 && (
-                    <motion.span initial={{ opacity: 0, y: 5 }} animate={{ opacity: 1, y: -10 }} className="absolute -top-3 -right-3 text-xs font-bold text-heal bg-card/80 rounded-full px-1.5 py-0.5">
-                      효과적!
-                    </motion.span>
-                  )}
+                  <span className="text-3xl drop-shadow-lg">{currentLog.move.emoji}</span>
                 </motion.div>
               )}
             </AnimatePresence>
 
-            {/* Damage number popup */}
+            {/* Damage number popup — shows during result phase */}
             <AnimatePresence>
-              {currentLog && animSubPhase === 'hit_effect' && !currentLog.missed && currentLog.damage > 0 && (
+              {currentLog && animSubPhase === 'result' && !currentLog.missed && currentLog.damage > 0 && (
                 <motion.div
                   key={`dmg-${allTurnLogs.length}-${animatingTurnIdx}`}
                   initial={{ opacity: 0, y: 0, scale: 0.5 }}
-                  animate={{ opacity: 1, y: -30, scale: 1 }}
-                  exit={{ opacity: 0, y: -50 }}
-                  transition={{ duration: 0.6 }}
+                  animate={{ opacity: 1, y: -25, scale: 1 }}
+                  exit={{ opacity: 0, y: -40 }}
+                  transition={{ duration: 0.5 }}
                   className={`absolute ${currentLog.defenderUid.startsWith('npc_') ? 'top-1/4 right-1/4' : 'bottom-1/4 left-1/4'}`}
                 >
                   <span className={`text-lg font-black ${currentLog.critical ? 'text-primary text-xl' : 'text-destructive'}`}>
@@ -779,67 +800,51 @@ export default function BattlePage() {
             </div>
           </div>
 
-          {/* Turn log message — sub-phase aware */}
-          <div className="glass-card p-3 min-h-[70px] flex items-center mb-3">
+          {/* Turn log message — 2-phase: attack → result */}
+          <div className="glass-card p-3 min-h-[60px] flex items-center mb-3">
             <AnimatePresence mode="wait">
               {currentLog && isAnimating ? (
-                <motion.div key={`log-${allTurnLogs.length}-${animatingTurnIdx}-${animSubPhase}`} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.2 }} className="w-full">
-                  {animSubPhase === 'move_announce' && (
-                    <>
-                      <div className="flex items-center gap-1.5 mb-1">
-                        <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-semibold ${isPlayerAttacking ? 'bg-primary/20 text-primary' : 'bg-destructive/20 text-destructive'}`}>
-                          {isPlayerAttacking ? '아군' : '상대'}
-                        </span>
-                        <span className="text-xs font-bold text-foreground">
+                <motion.div key={`log-${allTurnLogs.length}-${animatingTurnIdx}-${animSubPhase}`} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} transition={{ duration: 0.15 }} className="w-full">
+                  {animSubPhase === 'attack' && (
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-semibold ${isPlayerAttacking ? 'bg-primary/20 text-primary' : 'bg-destructive/20 text-destructive'}`}>
+                        {isPlayerAttacking ? '아군' : '상대'}
+                      </span>
+                      <span className="text-xs text-foreground">
+                        <span className="font-bold">
                           {currentLog.attackerUid.startsWith('npc_') 
                             ? (battleState.opponentTeam.find(p => p.uid === currentLog.attackerUid)?.nickname || battleState.opponentTeam.find(p => p.uid === currentLog.attackerUid)?.name)
                             : (player?.nickname || player?.name)
                           }
-                        </span>
-                      </div>
-                      <p className="text-xs text-foreground">
-                        {currentLog.move.emoji} <span className="font-semibold">{currentLog.move.name}</span>을(를) 사용!
-                      </p>
-                    </>
+                        </span>의 {currentLog.move.emoji} <span className="font-semibold">{currentLog.move.name}</span>!
+                      </span>
+                    </div>
                   )}
-                  {animSubPhase === 'hit_effect' && (
-                    <>
+                  {animSubPhase === 'result' && (
+                    <div className="space-y-0.5">
                       {currentLog.missed ? (
                         <p className="text-xs text-muted-foreground">하지만 빗나갔다!</p>
                       ) : (
                         <>
-                          <p className="text-xs text-foreground font-semibold">{currentLog.damage} 데미지!</p>
-                          {currentLog.effectiveness > 1 && <p className="text-[10px] text-heal mt-0.5 font-semibold">⚡ 효과는 굉장했다! (x{currentLog.effectiveness})</p>}
-                          {currentLog.effectiveness < 1 && <p className="text-[10px] text-muted-foreground mt-0.5">효과가 별로인 듯하다... (x{currentLog.effectiveness})</p>}
-                          {currentLog.critical && <p className="text-[10px] text-primary mt-0.5 font-bold">💥 급소에 맞았다!</p>}
+                          {currentLog.effectiveness > 1 && <p className="text-[10px] text-heal font-semibold">효과는 굉장했다!</p>}
+                          {currentLog.effectiveness < 1 && <p className="text-[10px] text-muted-foreground">효과가 별로인 듯하다...</p>}
+                          {currentLog.critical && <p className="text-[10px] text-primary font-bold">급소에 맞았다!</p>}
+                          {currentLog.statusApplied === 'burn' && <p className="text-[10px] text-accent">🔥 화상을 입었다!</p>}
+                          {currentLog.statusApplied === 'freeze' && <p className="text-[10px] text-accent">❄️ 얼어붙었다!</p>}
+                          {currentLog.statusApplied === 'paralyze' && <p className="text-[10px] text-accent">⚡ 마비되었다!</p>}
+                          {currentLog.statusApplied === 'lower_def' && <p className="text-[10px] text-accent">⬇️ 방어가 떨어졌다!</p>}
+                          {currentLog.healAmount > 0 && <p className="text-[10px] text-heal">💚 {currentLog.healAmount} HP 회복!</p>}
+                          {currentLog.defenderFainted && (
+                            <p className="text-xs text-destructive font-bold">
+                              {currentLog.defenderUid.startsWith('npc_') ? '상대' : '아군'} 포켓몬이 쓰러졌다!
+                            </p>
+                          )}
+                          {!currentLog.effectiveness || (currentLog.effectiveness === 1 && !currentLog.critical && !currentLog.statusApplied && !currentLog.healAmount && !currentLog.defenderFainted) ? (
+                            <p className="text-[10px] text-muted-foreground">{currentLog.damage} 데미지</p>
+                          ) : null}
                         </>
                       )}
-                    </>
-                  )}
-                  {animSubPhase === 'result_msg' && (
-                    <>
-                      {currentLog.statusApplied && (
-                        <p className="text-xs text-accent font-semibold">
-                          {currentLog.statusApplied === 'burn' && '🔥 화상을 입었다!'}
-                          {currentLog.statusApplied === 'freeze' && '❄️ 얼어붙었다!'}
-                          {currentLog.statusApplied === 'paralyze' && '⚡ 마비되었다!'}
-                          {currentLog.statusApplied === 'lower_def' && '⬇️ 방어가 떨어졌다!'}
-                        </p>
-                      )}
-                      {currentLog.healAmount > 0 && (
-                        <p className="text-xs text-heal font-semibold">💚 {currentLog.healAmount} HP 회복!</p>
-                      )}
-                      {currentLog.defenderFainted && (
-                        <motion.p initial={{ scale: 0.8 }} animate={{ scale: 1 }} className="text-xs text-destructive font-bold">
-                          {currentLog.defenderUid.startsWith('npc_') ? '상대' : '아군'} 포켓몬이 쓰러졌다!
-                        </motion.p>
-                      )}
-                      {!currentLog.statusApplied && !currentLog.healAmount && !currentLog.defenderFainted && !currentLog.missed && (
-                        <p className="text-xs text-muted-foreground">
-                          남은 HP: {currentLog.defenderHpAfter}
-                        </p>
-                      )}
-                    </>
+                    </div>
                   )}
                 </motion.div>
               ) : (
@@ -849,6 +854,8 @@ export default function BattlePage() {
               )}
             </AnimatePresence>
           </div>
+
+
 
           {/* Action Selection UI */}
           {!isAnimating && battleState.phase !== 'finished' && player && (
