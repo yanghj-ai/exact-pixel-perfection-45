@@ -7,7 +7,8 @@ import {
   setNickname, setAsLeader, reorderParty, type OwnedPokemon,
 } from '@/lib/collection';
 import { getPet } from '@/lib/pet';
-import { getPokemonById, RARITY_CONFIG } from '@/lib/pokemon-registry';
+import { getPokemonById, RARITY_CONFIG, TYPE_CONFIG } from '@/lib/pokemon-registry';
+import { getPokemonHabitats } from '@/lib/pokemon-habitat';
 import { ArrowLeft, Heart, Apple, Edit3, ArrowRightLeft, X, Check, Sparkles, Crown, ArrowUp, ArrowDown, Package, ChevronDown } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
@@ -351,6 +352,49 @@ export default function Party() {
                   </div>
                   <p className="text-[9px] text-muted-foreground mt-1 text-right">{selected.friendship} / 255</p>
                 </div>
+
+                {/* Pokemon Info */}
+                <div className="glass-card p-3 rounded-xl space-y-2">
+                  <div className="flex items-center gap-1.5 mb-1">
+                    <span className="text-xs font-semibold text-foreground">📋 포켓몬 정보</span>
+                  </div>
+                  <div className="flex gap-1.5">
+                    {selectedSpecies.types.map(t => (
+                      <span key={t} className={`text-[10px] px-2 py-0.5 rounded-full text-white ${TYPE_CONFIG[t].color}`}>
+                        {TYPE_CONFIG[t].emoji} {TYPE_CONFIG[t].label}
+                      </span>
+                    ))}
+                  </div>
+                  {selectedSpecies.description && (
+                    <p className="text-[10px] text-muted-foreground leading-relaxed">{selectedSpecies.description}</p>
+                  )}
+                </div>
+
+                {/* Habitat Info */}
+                {(() => {
+                  const habitats = getPokemonHabitats(selected.speciesId, selectedSpecies.types);
+                  if (habitats.length === 0) return null;
+                  return (
+                    <div className="glass-card p-3 rounded-xl">
+                      <div className="flex items-center gap-1.5 mb-2">
+                        <span className="text-xs font-semibold text-foreground">🗺️ 출몰 · 서식지</span>
+                      </div>
+                      <div className="space-y-1.5">
+                        {habitats.map(h => (
+                          <div key={h.id} className="flex items-center gap-2 p-1.5 rounded-lg bg-muted/30">
+                            <span className="text-base">{h.emoji}</span>
+                            <div className="flex-1 min-w-0">
+                              <p className="text-[11px] font-semibold text-foreground">{h.name}</p>
+                              <p className="text-[9px] text-muted-foreground">{h.description}</p>
+                            </div>
+                            <span className="text-[8px] px-1.5 py-0.5 rounded bg-muted text-muted-foreground">{h.terrain}</span>
+                          </div>
+                        ))}
+                      </div>
+                      <p className="text-[8px] text-muted-foreground/60 mt-2">💡 해당 지역에서 런닝하면 만날 확률이 높아집니다</p>
+                    </div>
+                  );
+                })()}
 
                 {/* Actions */}
                 <div className="grid grid-cols-3 gap-2">
