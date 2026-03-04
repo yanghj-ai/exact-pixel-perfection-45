@@ -2,14 +2,16 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { getProfile, saveProfile } from '@/lib/storage';
+import { useAuth } from '@/contexts/AuthContext';
 import { Switch } from '@/components/ui/switch';
 import { toast } from 'sonner';
-import { Moon, Bell, RotateCcw, HelpCircle } from 'lucide-react';
+import { Moon, Bell, RotateCcw, HelpCircle, LogOut } from 'lucide-react';
 import BottomNav from '@/components/BottomNav';
 import DebugPanel from '@/components/DebugPanel';
 
 export default function Settings() {
   const navigate = useNavigate();
+  const { signOut } = useAuth();
   const [profile, setProfile] = useState(getProfile());
 
   const updateSetting = (key: 'notificationsEnabled' | 'darkMode', value: boolean) => {
@@ -82,6 +84,18 @@ export default function Settings() {
           >
             <RotateCcw size={18} className="text-destructive" />
             <span className="text-sm font-medium text-destructive">데이터 초기화</span>
+          </button>
+
+          {/* Logout */}
+          <button
+            onClick={async () => {
+              await signOut();
+              navigate('/');
+            }}
+            className="flex w-full items-center gap-3 p-4 text-left"
+          >
+            <LogOut size={18} className="text-muted-foreground" />
+            <span className="text-sm font-medium text-foreground">로그아웃</span>
           </button>
         </motion.div>
 
