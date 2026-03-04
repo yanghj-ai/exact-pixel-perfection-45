@@ -2,6 +2,7 @@
 // 포켓몬 배틀 시뮬레이션 엔진
 // 턴제 자동 배틀 — 종별 베이스스탯/타입 상성/공식 데미지 공식 반영
 // 포켓몬별 고유 기술 & 부상 시스템 통합
+// 러닝 기록 → 배틀 버프 시스템 (FIX #8)
 // ═══════════════════════════════════════════════════════════
 
 import { getPokemonById, type PokemonType, type PokemonSpecies } from './pokemon-registry';
@@ -9,6 +10,8 @@ import { type OwnedPokemon, getCoins } from './collection';
 import { getMovesForPokemon, getMovesForLevel, type BattleMove } from './battle-moves';
 import { getEffectiveHpRatio } from './pokemon-health';
 import { getCachedBattleRecords, setCachedBattleRecords, syncBattleRecordToDB, isCloudReady } from './cloud-storage';
+import { getTodaySteps } from './pedometer';
+import { getRunningStreak } from './running-streak';
 
 // Re-export BattleMove for convenience
 export type { BattleMove } from './battle-moves';
@@ -118,6 +121,51 @@ export function getEffectiveness(attackType: PokemonType, defenderTypes: Pokemon
   return mult;
 }
 
+// ─── Running Buff (FIX #8) ───────────────────────────────
+
+export interface RunningBuff {
+  name: string;
+  statMult: number;
+  spdMult: number;
+  hpMult: number;
+  expMult: number;
+}
+
+export function getRunningBuff(): RunningBuff | null {
+  const todaySteps = getTodaySteps();
+  const streak = getRunningStreak();
+
+  let buff: RunningBuff | null = null;
+
+  if (todaySteps >= 5000) {
+    buff = { name: '철인의 근성', statMult: 1.10, spdMult: 1.10, hpMult: 1.05, expMult: 1.0 };
+  } else if (todaySteps >= 3000) {
+    buff = { name: '마라토너의 의지', statMult: 1.05, spdMult: 1.05, hpMult: 1.0, expMult: 1.0 };
+  } else if (todaySteps >= 1000) {
+    buff = { name: '러너의 기운', statMult: 1.0, spdMult: 1.10, hpMult: 1.0, expMult: 1.0 };
+  }
+
+  if (streak.currentStreak >= 7 && buff) {
+    buff.expMult = 1.2;
+  }
+
+  return buff;
+}
+
+function applyRunningBuff(pokemon: BattlePokemon): BattlePokemon {
+  const buff = getRunningBuff();
+  if (!buff) return pokemon;
+
+  return {
+    ...pokemon,
+    attack: Math.floor(pokemon.attack * buff.statMult),
+    defense: Math.floor(pokemon.defense * buff.statMult),
+    speed: Math.floor(pokemon.speed * buff.spdMult),
+    maxHp: Math.floor(pokemon.maxHp * buff.hpMult),
+    currentHp: Math.floor(pokemon.currentHp * buff.hpMult),
+  };
+}
+
 // ─── Stat Calculation (공식 포켓몬 스탯 공식) ─────────────
 
 function computeBattleStats(owned: OwnedPokemon, species: PokemonSpecies, applyInjury: boolean = false): BattlePokemon {
@@ -163,7 +211,8 @@ export function buildBattleTeam(ownedPokemon: OwnedPokemon[]): BattlePokemon[] {
     .map(p => {
       const species = getPokemonById(p.speciesId);
       if (!species) return null;
-      return computeBattleStats(p, species, true);
+      const stats = computeBattleStats(p, species, true);
+      return applyRunningBuff(stats); // Apply running buff to player team
     })
     .filter(Boolean) as BattlePokemon[];
 }
