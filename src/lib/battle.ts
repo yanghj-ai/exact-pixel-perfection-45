@@ -12,6 +12,7 @@ import { getEffectiveHpRatio } from './pokemon-health';
 import { getCachedBattleRecords, setCachedBattleRecords, syncBattleRecordToDB, isCloudReady } from './cloud-storage';
 import { getTodaySteps } from './pedometer';
 import { getRunningStreak } from './running-streak';
+import { getEffectiveMove, onSkillUsed, findMoveKey } from './skill-system';
 
 // Re-export BattleMove for convenience
 export type { BattleMove } from './battle-moves';
@@ -182,8 +183,8 @@ function computeBattleStats(owned: OwnedPokemon, species: PokemonSpecies, applyI
   const injuryRatio = applyInjury ? getEffectiveHpRatio(owned.uid) : 1;
   const startingHp = Math.max(1, Math.round(maxHp * injuryRatio));
 
-  // Get moves from learnset
-  const moves = getMovesForPokemon(species.id);
+  // Get moves from learnset (level-based unlock via FIX #1)
+  const moves = getMovesForPokemon(species.id, owned.level);
 
   return {
     uid: owned.uid,
@@ -585,7 +586,12 @@ function calcDamage(
 export function doAttack(attacker: BattlePokemon, defender: BattlePokemon, turn: number, isPlayerAttacking: boolean, chosenMove?: BattleMove): BattleTurnLog {
   let bestMove: BattleMove;
   if (chosenMove) {
-    bestMove = chosenMove;
+    // FIX #1: 플레이어 공격 시 스킬 레벨 보너스 적용 + 사용 기록
+    bestMove = isPlayerAttacking ? getEffectiveMove(chosenMove, attacker.uid) : chosenMove;
+    if (isPlayerAttacking) {
+      const moveKey = findMoveKey(chosenMove);
+      onSkillUsed(attacker.uid, moveKey);
+    }
   } else {
     const moves = attacker.moves.length > 0 ? attacker.moves : getMovesForPokemon(attacker.speciesId);
     bestMove = moves[0];

@@ -108,7 +108,7 @@ const STRUGGLE: BattleMove = {
  * Get moves for a specific Pokemon species using its learnset.
  * Falls back to type-based selection if no learnset found.
  */
-export function getMovesForPokemon(speciesId: number): BattleMove[] {
+export function getMovesForPokemon(speciesId: number, pokemonLevel?: number): BattleMove[] {
   const species = getPokemonById(speciesId);
   if (!species) return [STRUGGLE];
 
@@ -120,6 +120,13 @@ export function getMovesForPokemon(speciesId: number): BattleMove[] {
   const hasDamaging = moves.some(m => m.power > 0);
   if (!hasDamaging) {
     moves.push(STRUGGLE);
+  }
+
+  // FIX #1: 레벨 기반 스킬 슬롯 해금
+  if (pokemonLevel !== undefined) {
+    const { getUnlockedSlotCount } = require('./skill-system');
+    const slots = getUnlockedSlotCount(pokemonLevel);
+    return moves.slice(0, slots);
   }
 
   return moves.slice(0, 4);
