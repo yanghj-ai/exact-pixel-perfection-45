@@ -1,12 +1,12 @@
 // ═══════════════════════════════════════════════════════════
 // 포켓몬 배틀 시뮬레이션 엔진
-// 턴제 자동 배틀 — 친밀도/레벨/타입 상성 반영
-// 레벨별 기술 습득 & 부상 시스템 통합
+// 턴제 자동 배틀 — 종별 베이스스탯/타입 상성/공식 데미지 공식 반영
+// 포켓몬별 고유 기술 & 부상 시스템 통합
 // ═══════════════════════════════════════════════════════════
 
 import { getPokemonById, type PokemonType, type PokemonSpecies } from './pokemon-registry';
 import { type OwnedPokemon, getCoins } from './collection';
-import { getMovesForLevel, type BattleMove } from './battle-moves';
+import { getMovesForPokemon, getMovesForLevel, type BattleMove } from './battle-moves';
 import { getEffectiveHpRatio } from './pokemon-health';
 import { getCachedBattleRecords, setCachedBattleRecords, syncBattleRecordToDB, isCloudReady } from './cloud-storage';
 
@@ -24,7 +24,7 @@ export interface BattlePokemon {
   friendship: number;
   types: PokemonType[];
   spriteUrl: string;
-  moves: BattleMove[]; // learned moves
+  moves: BattleMove[];
 
   maxHp: number;
   currentHp: number;
@@ -32,9 +32,8 @@ export interface BattlePokemon {
   defense: number;
   speed: number;
 
-  // Status effects from moves
   status: 'none' | 'burn' | 'freeze' | 'paralyze';
-  atkModifier: number; // multiplicative, default 1
+  atkModifier: number;
   defModifier: number;
 }
 
@@ -55,10 +54,10 @@ export interface BattleTurnLog {
 }
 
 export interface BattleReward {
-  coins: number;       // positive = earned, negative = lost
+  coins: number;
   exp: number;
   bonusItems: { name: string; emoji: string; count: number }[];
-  coinsLost: number;   // how much coins lost on defeat (always >= 0)
+  coinsLost: number;
 }
 
 export interface BattleResult {
@@ -68,66 +67,75 @@ export interface BattleResult {
   turns: BattleTurnLog[];
   totalTurns: number;
   rewards: BattleReward;
-  /** HP ratios of player team after battle for injury tracking */
   playerHpRatios: { uid: string; hpRatio: number }[];
 }
 
-// ─── Type Effectiveness ──────────────────────────────────
+// ─── Type Effectiveness (15×15 compressed matrix) ────────
+// Types index: 0=Normal 1=Fire 2=Water 3=Electric 4=Grass 5=Ice
+//              6=Fighting 7=Poison 8=Ground 9=Flying 10=Psychic
+//              11=Bug 12=Rock 13=Ghost 14=Dragon
+// Values: '0'=1x, '1'=2x, '2'=0.5x, '3'=0x (immune)
 
-const TYPE_CHART: Partial<Record<PokemonType, { strong: PokemonType[]; weak: PokemonType[] }>> = {
-  fire: { strong: ['grass', 'ice', 'bug'], weak: ['water', 'rock', 'ground'] },
-  water: { strong: ['fire', 'rock', 'ground'], weak: ['grass', 'electric'] },
-  grass: { strong: ['water', 'rock', 'ground'], weak: ['fire', 'ice', 'flying', 'bug', 'poison'] },
-  electric: { strong: ['water', 'flying'], weak: ['ground'] },
-  ice: { strong: ['grass', 'ground', 'flying', 'dragon'], weak: ['fire', 'fighting', 'rock'] },
-  fighting: { strong: ['normal', 'ice', 'rock'], weak: ['flying', 'psychic', 'fairy'] },
-  poison: { strong: ['grass', 'fairy'], weak: ['ground', 'psychic'] },
-  ground: { strong: ['fire', 'electric', 'poison', 'rock'], weak: ['water', 'grass', 'ice'] },
-  flying: { strong: ['grass', 'fighting', 'bug'], weak: ['electric', 'ice', 'rock'] },
-  psychic: { strong: ['fighting', 'poison'], weak: ['bug', 'ghost'] },
-  bug: { strong: ['grass', 'psychic'], weak: ['fire', 'flying', 'rock'] },
-  rock: { strong: ['fire', 'ice', 'flying', 'bug'], weak: ['water', 'grass', 'fighting', 'ground'] },
-  ghost: { strong: ['psychic', 'ghost'], weak: ['ghost'] },
-  dragon: { strong: ['dragon'], weak: ['ice', 'dragon', 'fairy'] },
-  fairy: { strong: ['fighting', 'dragon'], weak: ['poison'] },
-  normal: { strong: [], weak: ['fighting'] },
+const TC =
+  '000000000000230' + // Normal→
+  '022011000001202' + // Fire→
+  '012020001001012' + // Water→
+  '001220003100002' + // Electric→
+  '021020021020102' + // Grass→
+  '022012001100001' + // Ice→
+  '100001020221130' + // Fighting→
+  '000010020000220' + // Poison→
+  '010120010302100' + // Ground→
+  '000210100001200' + // Flying→
+  '000000110020030' + // Psychic→
+  '020010220210020' + // Bug→
+  '010001020101000' + // Rock→
+  '300000000010010' + // Ghost→
+  '000000000000001';  // Dragon→
+
+const TYPE_INDEX: Record<string, number> = {
+  normal: 0, fire: 1, water: 2, electric: 3, grass: 4,
+  ice: 5, fighting: 6, poison: 7, ground: 8, flying: 9,
+  psychic: 10, bug: 11, rock: 12, ghost: 13, dragon: 14,
 };
+
+function getTypeEffectiveness(atkType: PokemonType, defType: PokemonType): number {
+  const a = TYPE_INDEX[atkType];
+  const d = TYPE_INDEX[defType];
+  if (a === undefined || d === undefined) return 1; // fairy or unknown → neutral
+  const v = TC[a * 15 + d];
+  if (v === '1') return 2;
+  if (v === '2') return 0.5;
+  if (v === '3') return 0;
+  return 1;
+}
 
 export function getEffectiveness(attackType: PokemonType, defenderTypes: PokemonType[]): number {
   let mult = 1;
-  const chart = TYPE_CHART[attackType];
-  if (!chart) return 1;
   for (const dt of defenderTypes) {
-    if (chart.strong.includes(dt)) mult *= 2;
-    if (chart.weak.includes(dt)) mult *= 0.5;
+    mult *= getTypeEffectiveness(attackType, dt);
   }
   return mult;
 }
 
-// ─── Stat Calculation ────────────────────────────────────
+// ─── Stat Calculation (공식 포켓몬 스탯 공식) ─────────────
 
 function computeBattleStats(owned: OwnedPokemon, species: PokemonSpecies, applyInjury: boolean = false): BattlePokemon {
-  const friendshipBonus = 1 + (owned.friendship / 255) * 0.3;
-  const levelFactor = owned.level;
+  const base = species.baseStats;
+  const lv = owned.level;
 
-  const baseHp = 40 + levelFactor * 3;
-  const baseAtk = 15 + levelFactor * 2;
-  const baseDef = 12 + levelFactor * 1.5;
-  const baseSpd = 10 + levelFactor * 1.2;
-
-  const rarityMult: Record<string, number> = {
-    common: 0.85, uncommon: 0.95, rare: 1.05, epic: 1.15, legendary: 1.3,
-  };
-  const rMult = rarityMult[species.rarity] || 1;
-
-  const maxHp = Math.round(baseHp * friendshipBonus * rMult);
+  // Official Pokemon stat formula (simplified, no IVs/EVs)
+  const maxHp = Math.floor(((base.hp * 2) * lv / 100) + 10 + lv);
+  const attack = Math.floor(((base.atk * 2) * lv / 100) + 5);
+  const defense = Math.floor(((base.def * 2) * lv / 100) + 5);
+  const speed = Math.floor(((base.spd * 2) * lv / 100) + 5);
 
   // Apply injury: start with reduced HP
   const injuryRatio = applyInjury ? getEffectiveHpRatio(owned.uid) : 1;
   const startingHp = Math.max(1, Math.round(maxHp * injuryRatio));
 
-  // Get moves based on level
-  const moves = getMovesForLevel(species.types, owned.level);
+  // Get moves from learnset
+  const moves = getMovesForPokemon(species.id);
 
   return {
     uid: owned.uid,
@@ -141,9 +149,9 @@ function computeBattleStats(owned: OwnedPokemon, species: PokemonSpecies, applyI
     moves,
     maxHp,
     currentHp: startingHp,
-    attack: Math.round(baseAtk * friendshipBonus * rMult),
-    defense: Math.round(baseDef * friendshipBonus * rMult),
-    speed: Math.round(baseSpd * friendshipBonus * rMult),
+    attack,
+    defense,
+    speed,
     status: 'none',
     atkModifier: 1,
     defModifier: 1,
@@ -155,7 +163,7 @@ export function buildBattleTeam(ownedPokemon: OwnedPokemon[]): BattlePokemon[] {
     .map(p => {
       const species = getPokemonById(p.speciesId);
       if (!species) return null;
-      return computeBattleStats(p, species, true); // apply injury
+      return computeBattleStats(p, species, true);
     })
     .filter(Boolean) as BattlePokemon[];
 }
@@ -208,7 +216,7 @@ export function initTurnBattle(playerTeam: BattlePokemon[], opponentTeam: Battle
 
 /** Choose best move for NPC (AI) */
 function chooseNpcMove(attacker: BattlePokemon, defender: BattlePokemon): BattleMove {
-  const moves = attacker.moves.length > 0 ? attacker.moves : getMovesForLevel(attacker.types, attacker.level);
+  const moves = attacker.moves.length > 0 ? attacker.moves : getMovesForPokemon(attacker.speciesId);
   let bestMove = moves[0];
   let bestDmg = 0;
   for (const m of moves) {
@@ -239,7 +247,6 @@ export function executeTurn(state: TurnBasedBattleState, playerMove: BattleMove)
   const secondMove = playerFirst ? opponentMove : playerMove;
   const firstIsPlayer = playerFirst;
 
-  // Skip checks for status
   const canAct = (p: BattlePokemon) => {
     if (p.status === 'freeze' && Math.random() > 0.1) return false;
     if (p.status === 'paralyze' && Math.random() < 0.25) return false;
@@ -292,7 +299,6 @@ export function executeTurn(state: TurnBasedBattleState, playerMove: BattleMove)
     }
   }
 
-  // Check if battle should continue
   if (state.turnCount >= 200) {
     state.phase = 'finished';
     state.winner = 'opponent';
@@ -310,13 +316,11 @@ export function executeSwitchTurn(state: TurnBasedBattleState, newPlayerIdx: num
   if (!opponent || !oldPlayer || newPlayerIdx < 0 || newPlayerIdx >= state.playerTeam.length) return newTurns;
   if (state.playerTeam[newPlayerIdx].currentHp <= 0) return newTurns;
 
-  // Switch the player's active pokemon
   state.playerIdx = newPlayerIdx;
   state.turnCount++;
 
   const newPlayer = state.playerTeam[state.playerIdx];
 
-  // Create a switch log entry (no damage, just informational)
   const switchLog: BattleTurnLog = {
     turn: state.turnCount,
     attackerUid: oldPlayer.uid,
@@ -335,7 +339,6 @@ export function executeSwitchTurn(state: TurnBasedBattleState, newPlayerIdx: num
   newTurns.push(switchLog);
   state.turns.push(switchLog);
 
-  // Opponent gets a free attack on the new pokemon
   const canAct = (p: BattlePokemon) => {
     if (p.status === 'freeze' && Math.random() > 0.1) return false;
     if (p.status === 'paralyze' && Math.random() < 0.25) return false;
@@ -349,7 +352,6 @@ export function executeSwitchTurn(state: TurnBasedBattleState, newPlayerIdx: num
     state.turns.push(attackLog);
 
     if (attackLog.defenderFainted) {
-      // Find next alive player pokemon
       const nextAlive = state.playerTeam.findIndex((p, i) => i !== state.playerIdx && p.currentHp > 0);
       if (nextAlive === -1) {
         state.phase = 'finished';
@@ -442,12 +444,25 @@ export function simulateBattle(playerTeam: BattlePokemon[], opponentTeam: Battle
   };
 }
 
+// ─── Damage Calculation (공식 포켓몬 데미지 공식) ─────────
+
+function calcDamage(
+  level: number, atk: number, def: number,
+  power: number, effectiveness: number,
+  stab: number, critical: number
+): number {
+  if (power === 0) return 0; // Status moves
+  const base = ((2 * level / 5 + 2) * power * atk / def) / 50 + 2;
+  const random = 0.85 + Math.random() * 0.15;
+  return Math.max(1, Math.floor(base * effectiveness * stab * critical * random));
+}
+
 function doAttack(attacker: BattlePokemon, defender: BattlePokemon, turn: number, isPlayerAttacking: boolean, chosenMove?: BattleMove): BattleTurnLog {
   let bestMove: BattleMove;
   if (chosenMove) {
     bestMove = chosenMove;
   } else {
-    const moves = attacker.moves.length > 0 ? attacker.moves : getMovesForLevel(attacker.types, attacker.level);
+    const moves = attacker.moves.length > 0 ? attacker.moves : getMovesForPokemon(attacker.speciesId);
     bestMove = moves[0];
     let bestDmg = 0;
     for (const m of moves) {
@@ -459,7 +474,7 @@ function doAttack(attacker: BattlePokemon, defender: BattlePokemon, turn: number
 
   // Accuracy check
   const accuracyRoll = Math.random() * 100;
-  const missed = accuracyRoll > bestMove.accuracy;
+  const missed = bestMove.accuracy > 0 && accuracyRoll > bestMove.accuracy;
 
   if (missed) {
     const aName = attacker.nickname || attacker.name;
@@ -484,17 +499,19 @@ function doAttack(attacker: BattlePokemon, defender: BattlePokemon, turn: number
   const critical = Math.random() < 0.1;
   const critMult = critical ? 1.5 : 1;
   const stab = attacker.types.includes(bestMove.type) ? 1.5 : 1;
-  const randomFactor = 0.85 + Math.random() * 0.15;
 
   // Status modifiers
   const atkMod = attacker.atkModifier * (attacker.status === 'burn' ? 0.5 : 1);
   const defMod = defender.defModifier;
 
-  let damage = Math.round(
-    ((attacker.attack * atkMod * bestMove.power) / (defender.defense * defMod * 2.5)) *
-    effectiveness * critMult * stab * randomFactor
+  // Official damage formula
+  const effectiveAtk = Math.round(attacker.attack * atkMod);
+  const effectiveDef = Math.max(1, Math.round(defender.defense * defMod));
+
+  let damage = calcDamage(
+    attacker.level, effectiveAtk, effectiveDef,
+    bestMove.power, effectiveness, stab, critMult
   );
-  damage = Math.max(1, damage);
 
   defender.currentHp = Math.max(0, defender.currentHp - damage);
   const fainted = defender.currentHp <= 0;
@@ -540,10 +557,15 @@ function doAttack(attacker: BattlePokemon, defender: BattlePokemon, turn: number
   const aName = attacker.nickname || attacker.name;
   const dName = defender.nickname || defender.name;
   let message = `${aName}의 ${bestMove.name}! `;
-  if (effectiveness > 1) message += '효과는 굉장했다! ';
-  else if (effectiveness < 1) message += '효과가 별로인 듯하다... ';
-  if (critical) message += '급소에 맞았다! ';
-  message += `${damage} 데미지!`;
+  if (bestMove.power === 0) {
+    message = `${aName}의 ${bestMove.name}! `;
+  } else {
+    if (effectiveness > 1) message += '효과는 굉장했다! ';
+    else if (effectiveness < 1 && effectiveness > 0) message += '효과가 별로인 듯하다... ';
+    else if (effectiveness === 0) message += '효과가 없다... ';
+    if (critical) message += '급소에 맞았다! ';
+    message += `${damage} 데미지!`;
+  }
   if (statusApplied === 'burn') message += ` ${dName}은(는) 화상을 입었다!`;
   if (statusApplied === 'freeze') message += ` ${dName}은(는) 얼어붙었다!`;
   if (statusApplied === 'paralyze') message += ` ${dName}은(는) 마비되었다!`;
