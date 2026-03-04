@@ -323,10 +323,11 @@ export interface PartyExpResult {
   levelAfter: number;
   evolved: boolean;
   evolvedTo?: number;
+  isLeader: boolean;
 }
 
-/** Grant EXP to all party Pokémon (from running, battles, etc.) */
-export function grantExpToParty(totalExp: number): PartyExpResult[] {
+/** Grant EXP to all party Pokémon (from running, battles, etc.). Leader (party[0]) gets 1.5x bonus. */
+export function grantExpToParty(totalExp: number, leaderBonusMultiplier: number = 1.5): PartyExpResult[] {
   const col = getCollection();
   const partyMembers = col.party
     .map(uid => col.owned.find(p => p.uid === uid))
@@ -337,13 +338,15 @@ export function grantExpToParty(totalExp: number): PartyExpResult[] {
   const expPerMember = Math.max(1, Math.floor(totalExp / partyMembers.length));
   const results: PartyExpResult[] = [];
 
-  for (const pokemon of partyMembers) {
+  for (let i = 0; i < partyMembers.length; i++) {
+    const pokemon = partyMembers[i];
+    const isLeader = i === 0;
+    const actualExp = isLeader ? Math.floor(expPerMember * leaderBonusMultiplier) : expPerMember;
     const species = getPokemonById(pokemon.speciesId);
     if (!species) continue;
 
     const levelBefore = pokemon.level;
-    // Simple EXP formula: need (level * 25) EXP per level
-    let remainingExp = expPerMember;
+    let remainingExp = actualExp;
     let currentLevel = pokemon.level;
 
     while (remainingExp > 0) {
@@ -367,7 +370,6 @@ export function grantExpToParty(totalExp: number): PartyExpResult[] {
       pokemon.speciesId = nextSpeciesId;
       evolved = true;
       evolvedTo = nextSpeciesId;
-      // Auto-register evolved species in pokedex
       if (!col.seen) col.seen = [];
       if (!col.seen.includes(nextSpeciesId)) col.seen.push(nextSpeciesId);
     }
@@ -381,11 +383,12 @@ export function grantExpToParty(totalExp: number): PartyExpResult[] {
       uid: pokemon.uid,
       speciesId: pokemon.speciesId,
       name: species.name,
-      expGained: expPerMember,
+      expGained: actualExp,
       levelBefore,
       levelAfter: currentLevel,
       evolved,
       evolvedTo,
+      isLeader,
     });
   }
 

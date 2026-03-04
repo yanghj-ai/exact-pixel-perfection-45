@@ -123,6 +123,7 @@ export default function RunningCompleted({
                     </div>
                     <div className="flex items-center gap-2 text-[10px]">
                       <span className="text-secondary font-bold">+{r.expGained} EXP</span>
+                      {r.isLeader && <span className="px-1 py-0.5 rounded bg-primary/15 text-primary font-bold">🤝 x1.5</span>}
                       {r.levelAfter > r.levelBefore && <span className="text-primary font-bold">Lv.{r.levelBefore}→{r.levelAfter}</span>}
                       {r.evolved && r.evolvedTo && <span className="text-accent font-bold">✨ 진화!</span>}
                     </div>
