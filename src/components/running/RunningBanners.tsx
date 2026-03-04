@@ -42,6 +42,9 @@ export function LegendaryBanner({ encounter, progress, caught }: LegendaryBanner
           </div>
           {!caught && (
             <>
+              {encounter.definition.storyIntro && !caught && (
+                <p className="text-[10px] text-secondary/80 italic mb-1.5">💬 {encounter.definition.storyIntro}</p>
+              )}
               <p className="text-[10px] text-muted-foreground mb-1.5">{encounter.mission.label}: {encounter.mission.description}</p>
               <div className="h-2 rounded-full bg-muted overflow-hidden">
                 <motion.div className="h-full rounded-full gradient-warm" initial={false} animate={{ width: `${progress}%` }} transition={{ duration: 0.3 }} />
@@ -49,7 +52,7 @@ export function LegendaryBanner({ encounter, progress, caught }: LegendaryBanner
               <p className="text-[9px] text-muted-foreground mt-0.5 text-right">{Math.round(progress)}%</p>
             </>
           )}
-          {caught && <p className="text-[10px] text-secondary">🎉 축하합니다! 전설의 포켓몬을 포획했습니다!</p>}
+          {caught && <p className="text-[10px] text-secondary">{encounter.definition.storyOutro || '🎉 축하합니다! 전설의 포켓몬을 포획했습니다!'}</p>}
         </div>
       </div>
     </motion.div>

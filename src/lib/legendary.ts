@@ -1,10 +1,9 @@
 // ═══════════════════════════════════════════════════════════
-// 전설의 포켓몬 — 거리/챌린지 기반 조우 + 포획 미션
+// 전설의 포켓몬 — 챌린지 기반 스토리 해금 + 포획 미션
 // ═══════════════════════════════════════════════════════════
 
-import { getRunningStats, type Challenge } from './running';
-import { getOwnedSpeciesIds, getCollectionStats } from './collection';
-import { getProfile } from './storage';
+import { getOwnedSpeciesIds } from './collection';
+import { isChallengeCompleted, areAllChallengesCompleted } from './challenge';
 import { getCachedLegendaryState, setCachedLegendaryState, isCloudReady } from './cloud-storage';
 
 // ─── Types ───────────────────────────────────────────────
@@ -24,6 +23,14 @@ export interface LegendaryDefinition {
   emoji: string;
   encounterCondition: string;
   encounterHint: string;
+  /** 해금에 필요한 챌린지 ID 목록 */
+  requiredChallenges: string[];
+  /** 조우 시 스토리 메시지 */
+  storyIntro: string;
+  /** 포획 시 스토리 메시지 */
+  storyOutro: string;
+  /** 자동 포획 여부 (뮤) */
+  autoCatch?: boolean;
   mission: CatchMission;
 }
 
@@ -39,19 +46,6 @@ export interface LegendaryEncounterResult {
   speciesId: number;
 }
 
-// ─── Special Event Types ─────────────────────────────────
-
-export interface SpecialEvent {
-  id: string;
-  speciesId: number;
-  name: string;
-  emoji: string;
-  condition: 'streak' | 'weekly_goal_streak' | 'session_count' | 'pokedex_count';
-  targetValue: number;
-  description: string;
-  hint: string;
-}
-
 // ─── Legendary Definitions ──────────────────────────────
 
 export const LEGENDARY_DEFS: LegendaryDefinition[] = [
@@ -59,43 +53,14 @@ export const LEGENDARY_DEFS: LegendaryDefinition[] = [
     speciesId: 144, // Articuno
     name: '프리져',
     emoji: '🧊',
-    encounterCondition: '총 누적 50km 달성',
-    encounterHint: '더 많이 달리면 얼음새의 기운이 느껴질지도...',
-    mission: {
-      type: 'combo',
-      label: '인내의 시련',
-      description: '한 세션에서 3km 달리기 + 15분 이상 유지',
-      requirements: [
-        { type: 'distance', targetValue: 3, unit: 'km' },
-        { type: 'time', targetValue: 15, unit: '분' },
-      ],
-    },
-  },
-  {
-    speciesId: 145, // Zapdos
-    name: '썬더',
-    emoji: '⚡',
-    encounterCondition: '총 누적 100km 달성',
-    encounterHint: '번개의 새는 빠른 러너에게 나타난다고 한다...',
-    mission: {
-      type: 'combo',
-      label: '번개의 속도',
-      description: '한 세션에서 2km + 6분/km 이하 페이스',
-      requirements: [
-        { type: 'distance', targetValue: 2, unit: 'km' },
-        { type: 'pace', targetValue: 6, unit: '분/km' },
-      ],
-    },
-  },
-  {
-    speciesId: 146, // Moltres
-    name: '파이어',
-    emoji: '🔥',
-    encounterCondition: '총 누적 150km 달성',
-    encounterHint: '불꽃의 새는 인내심 있는 러너를 시험한다...',
+    encounterCondition: 'SP1(얼리버드) + S2(7일 연속) 챌린지 완료',
+    encounterHint: '새벽의 차가운 공기 속에서 꾸준히 달리는 자에게 얼음새가 나타난다...',
+    requiredChallenges: ['SP1', 'S2'],
+    storyIntro: '새벽 안개 속에서 차가운 기운이 감돈다... 프리져가 당신의 인내를 시험하러 나타났다!',
+    storyOutro: '프리져가 당신의 꾸준한 새벽 러닝에 감복하여 동료가 되었습니다! ❄️',
     mission: {
       type: 'distance',
-      label: '불꽃의 의지',
+      label: '인내의 시련',
       description: '한 세션에서 5km 완주',
       requirements: [
         { type: 'distance', targetValue: 5, unit: 'km' },
@@ -103,15 +68,37 @@ export const LEGENDARY_DEFS: LegendaryDefinition[] = [
     },
   },
   {
-    speciesId: 150, // Mewtwo
-    name: '뮤츠',
-    emoji: '🔮',
-    encounterCondition: '모든 챌린지 완료',
-    encounterHint: '모든 도전을 정복한 자만이 만날 수 있다...',
+    speciesId: 145, // Zapdos
+    name: '썬더',
+    emoji: '⚡',
+    encounterCondition: 'SP3(스피드스터) + D3(5km 러너) 챌린지 완료',
+    encounterHint: '빠른 발걸음에 번개가 이끌리듯... 스피드와 거리를 정복한 자만이...',
+    requiredChallenges: ['SP3', 'D3'],
+    storyIntro: '하늘에서 번개가 내리치며 썬더가 나타났다! 당신의 속도를 증명하라!',
+    storyOutro: '번개처럼 빠른 당신의 러닝에 썬더가 인정하며 동료가 되었습니다! ⚡',
     mission: {
       type: 'combo',
-      label: '초월의 시련',
-      description: '한 세션 10km 또는 5분/km 이하로 5km',
+      label: '번개의 속도',
+      description: '3km + 페이스 4:30/km 이하',
+      requirements: [
+        { type: 'distance', targetValue: 3, unit: 'km' },
+        { type: 'pace', targetValue: 4.5, unit: '분/km' },
+      ],
+    },
+  },
+  {
+    speciesId: 146, // Moltres
+    name: '파이어',
+    emoji: '🔥',
+    encounterCondition: 'S4(30일 연속) + D4(10km 정복) 챌린지 완료',
+    encounterHint: '30일간 타오르는 의지와 10km의 거리를 넘은 자에게 불꽃이...',
+    requiredChallenges: ['S4', 'D4'],
+    storyIntro: '하늘이 붉게 물들며 파이어가 강림했다! 당신의 불꽃 같은 의지를 보여줘!',
+    storyOutro: '끝까지 포기하지 않는 당신의 의지에 파이어가 동료가 되었습니다! 🔥',
+    mission: {
+      type: 'distance',
+      label: '불꽃의 의지',
+      description: '한 세션에서 10km 완주',
       requirements: [
         { type: 'distance', targetValue: 10, unit: 'km' },
       ],
@@ -121,61 +108,38 @@ export const LEGENDARY_DEFS: LegendaryDefinition[] = [
     speciesId: 151, // Mew
     name: '뮤',
     emoji: '✨',
-    encounterCondition: '총 누적 1500km 달성',
-    encounterHint: '전설 속의 환상 포켓몬... 끝없는 여정 끝에 만날 수 있을까?',
+    encounterCondition: '전 챌린지 100% 달성',
+    encounterHint: '모든 도전을 완수한 진정한 마스터에게만 환상의 포켓몬이 모습을 드러낸다...',
+    requiredChallenges: [], // Special: all challenges
+    storyIntro: '공기가 반짝이며 신비로운 기운이 감싼다... 뮤가 당신 앞에 모습을 드러냈다!',
+    storyOutro: '뮤가 당신을 진정한 포켓몬 마스터로 인정하며 스스로 동료가 되었습니다! ✨',
+    autoCatch: true,
     mission: {
       type: 'distance',
-      label: '신비의 탐색',
-      description: '한 세션에서 3km 달리기',
+      label: '자동 합류',
+      description: '배틀 없이 합류',
       requirements: [
-        { type: 'distance', targetValue: 3, unit: 'km' },
+        { type: 'distance', targetValue: 0.1, unit: 'km' },
       ],
     },
   },
-];
-
-// ─── Special Events ─────────────────────────────────────
-
-export const SPECIAL_EVENTS: SpecialEvent[] = [
   {
-    id: 'eevee_streak',
-    speciesId: 133, // Eevee
-    name: '이브이',
-    emoji: '🦊',
-    condition: 'streak',
-    targetValue: 7,
-    description: '연속 출석 7일 달성 시 이브이와 조우!',
-    hint: '매일 꾸준히 접속하면 특별한 포켓몬을 만날 수 있다...',
-  },
-  {
-    id: 'lapras_weekly',
-    speciesId: 131, // Lapras
-    name: '라프라스',
-    emoji: '🐋',
-    condition: 'weekly_goal_streak',
-    targetValue: 3,
-    description: '주간 목표 3주 연속 달성 시 라프라스와 조우!',
-    hint: '꾸준한 주간 목표 달성이 바다의 전설을 불러온다...',
-  },
-  {
-    id: 'snorlax_sessions',
-    speciesId: 143, // Snorlax
-    name: '잠만보',
-    emoji: '😴',
-    condition: 'session_count',
-    targetValue: 50,
-    description: '총 50회 런닝 세션 달성 시 잠만보와 조우!',
-    hint: '수많은 런닝을 하다 보면 길을 막고 있는 녀석을 만날지도...',
-  },
-  {
-    id: 'ditto_pokedex',
-    speciesId: 132, // Ditto
-    name: '메타몽',
-    emoji: '🟣',
-    condition: 'pokedex_count',
-    targetValue: 50,
-    description: '도감 50종 이상 등록 시 메타몽과 조우!',
-    hint: '많은 포켓몬을 모은 트레이너 앞에 변신의 달인이 나타난다...',
+    speciesId: 150, // Mewtwo
+    name: '뮤츠',
+    emoji: '🔮',
+    encounterCondition: '뮤 보유 + T4(500km) 완료 + 유전자 촉매 사용',
+    encounterHint: '뮤의 유전자에서 태어난 최강의 포켓몬... 유전자 촉매가 열쇠가 된다...',
+    requiredChallenges: ['T4'], // + Mew owned + gene_catalyst checked separately
+    storyIntro: '유전자 촉매가 빛나며 공간이 일그러진다... 뮤츠가 당신의 힘을 시험하러 나타났다!',
+    storyOutro: '뮤츠가 당신의 끝없는 도전 정신을 인정하며 동료가 되었습니다! 🔮',
+    mission: {
+      type: 'distance',
+      label: '초월의 시련',
+      description: '한 세션에서 10km 완주',
+      requirements: [
+        { type: 'distance', targetValue: 10, unit: 'km' },
+      ],
+    },
   },
 ];
 
@@ -184,10 +148,10 @@ export const SPECIAL_EVENTS: SpecialEvent[] = [
 const STORAGE_KEY = 'routinmon-legendary';
 
 interface LegendaryState {
-  caught: number[]; // speciesIds that were caught
+  caught: number[];
   encounters: number;
   lastEncounterDate: string | null;
-  weeklyGoalStreakCount: number; // for Lapras event tracking
+  weeklyGoalStreakCount?: number; // legacy compat
 }
 
 function getLegendaryState(): LegendaryState {
@@ -201,83 +165,60 @@ function getLegendaryState(): LegendaryState {
     if (parsed.caught && parsed.caught.length > 0 && typeof parsed.caught[0] === 'string') {
       parsed.caught = [];
     }
-    return { weeklyGoalStreakCount: 0, ...parsed };
+    return parsed;
   }
-  return { caught: [], encounters: 0, lastEncounterDate: null, weeklyGoalStreakCount: 0 };
+  return { caught: [], encounters: 0, lastEncounterDate: null };
 }
 
 function saveLegendaryState(state: LegendaryState) {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
   if (isCloudReady()) {
-    setCachedLegendaryState(state);
+    setCachedLegendaryState({ ...state, weeklyGoalStreakCount: state.weeklyGoalStreakCount ?? 0 });
   }
 }
 
 // ─── Encounter Condition Checks ─────────────────────────
 
+/** 인벤토리에 유전자 촉매가 있는지 확인 */
+function hasGeneCatalyst(): boolean {
+  try {
+    const inv = localStorage.getItem('routinmon-inventory');
+    if (!inv) return false;
+    const items = JSON.parse(inv);
+    if (Array.isArray(items)) {
+      return items.some((it: any) => it.id === 'gene_catalyst' && it.quantity > 0);
+    }
+    return false;
+  } catch { return false; }
+}
+
 export function checkLegendaryEncounterConditions(): LegendaryDefinition[] {
-  const stats = getRunningStats();
   const ownedIds = getOwnedSpeciesIds();
   const state = getLegendaryState();
   const available: LegendaryDefinition[] = [];
 
   for (const def of LEGENDARY_DEFS) {
-    // Already caught
     if (state.caught.includes(def.speciesId) || ownedIds.has(def.speciesId)) continue;
 
     let conditionMet = false;
+
     switch (def.speciesId) {
-      case 144: // Articuno — 50km total
-        conditionMet = stats.totalDistanceKm >= 50;
+      case 144: // Articuno — SP1 + S2
+      case 145: // Zapdos — SP3 + D3
+      case 146: // Moltres — S4 + D4
+        conditionMet = def.requiredChallenges.every(id => isChallengeCompleted(id));
         break;
-      case 145: // Zapdos — 100km total
-        conditionMet = stats.totalDistanceKm >= 100;
+      case 151: // Mew — all challenges 100%
+        conditionMet = areAllChallengesCompleted();
         break;
-      case 146: // Moltres — 150km total
-        conditionMet = stats.totalDistanceKm >= 150;
-        break;
-      case 150: // Mewtwo — all challenges completed
-        conditionMet = stats.challenges.length > 0 && stats.challenges.every(c => c.completed);
-        break;
-      case 151: // Mew — 1500km total
-        conditionMet = stats.totalDistanceKm >= 1500;
+      case 150: // Mewtwo — Mew owned + T4 + gene catalyst
+        conditionMet = ownedIds.has(151) &&
+          isChallengeCompleted('T4') &&
+          hasGeneCatalyst();
         break;
     }
 
     if (conditionMet) available.push(def);
-  }
-
-  return available;
-}
-
-export function checkSpecialEventConditions(): SpecialEvent[] {
-  const stats = getRunningStats();
-  const ownedIds = getOwnedSpeciesIds();
-  const state = getLegendaryState();
-  const profile = getProfile();
-  const collectionStats = getCollectionStats();
-  const available: SpecialEvent[] = [];
-
-  for (const event of SPECIAL_EVENTS) {
-    if (state.caught.includes(event.speciesId) || ownedIds.has(event.speciesId)) continue;
-
-    let conditionMet = false;
-    switch (event.condition) {
-      case 'streak':
-        conditionMet = (profile.consecutiveLoginDays || 0) >= event.targetValue;
-        break;
-      case 'weekly_goal_streak':
-        conditionMet = (state.weeklyGoalStreakCount || 0) >= event.targetValue;
-        break;
-      case 'session_count':
-        conditionMet = stats.totalSessions >= event.targetValue;
-        break;
-      case 'pokedex_count':
-        conditionMet = collectionStats.uniqueSpecies >= event.targetValue;
-        break;
-    }
-
-    if (conditionMet) available.push(event);
   }
 
   return available;
@@ -291,13 +232,6 @@ export function checkMissionComplete(
   elapsedSeconds: number,
   paceMinPerKm: number,
 ): boolean {
-  // For Mewtwo special: 10km OR (5km + pace ≤ 5)
-  if (mission.requirements.length === 1 && mission.label === '초월의 시련') {
-    const dist = distanceKm >= 10;
-    const combo = distanceKm >= 5 && paceMinPerKm > 0 && paceMinPerKm <= 5;
-    return dist || combo;
-  }
-
   return mission.requirements.every(req => {
     switch (req.type) {
       case 'distance':
@@ -349,22 +283,6 @@ export function recordLegendaryCatch(speciesId: number): void {
   saveLegendaryState(state);
 }
 
-export function recordSpecialEventCatch(speciesId: number): void {
-  recordLegendaryCatch(speciesId); // Same storage
-}
-
-export function incrementWeeklyGoalStreak(): void {
-  const state = getLegendaryState();
-  state.weeklyGoalStreakCount = (state.weeklyGoalStreakCount || 0) + 1;
-  saveLegendaryState(state);
-}
-
-export function resetWeeklyGoalStreak(): void {
-  const state = getLegendaryState();
-  state.weeklyGoalStreakCount = 0;
-  saveLegendaryState(state);
-}
-
 // ─── Info helpers ───────────────────────────────────────
 
 export function getAllLegendaryDefs(): (LegendaryDefinition & { caught: boolean })[] {
@@ -373,15 +291,6 @@ export function getAllLegendaryDefs(): (LegendaryDefinition & { caught: boolean 
   return LEGENDARY_DEFS.map(d => ({
     ...d,
     caught: state.caught.includes(d.speciesId) || ownedIds.has(d.speciesId),
-  }));
-}
-
-export function getAllSpecialEvents(): (SpecialEvent & { caught: boolean })[] {
-  const state = getLegendaryState();
-  const ownedIds = getOwnedSpeciesIds();
-  return SPECIAL_EVENTS.map(e => ({
-    ...e,
-    caught: state.caught.includes(e.speciesId) || ownedIds.has(e.speciesId),
   }));
 }
 

@@ -332,6 +332,17 @@ export function getActiveTitle(): string | null {
   return getChallengeState().activeTitle;
 }
 
+/** 특정 챌린지가 완료되었는지 */
+export function isChallengeCompleted(id: string): boolean {
+  const state = getChallengeState();
+  return state.progress[id]?.completed ?? false;
+}
+
+/** 모든 챌린지가 완료되었는지 (isAllChallengesComplete alias) */
+export function areAllChallengesCompleted(): boolean {
+  return isAllChallengesComplete();
+}
+
 export const CATEGORY_LABELS: Record<ChallengeCategory, { label: string; emoji: string }> = {
   distance: { label: '거리', emoji: '🏃' },
   cumulative: { label: '누적', emoji: '📏' },
