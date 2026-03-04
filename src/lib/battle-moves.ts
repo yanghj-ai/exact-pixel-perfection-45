@@ -124,8 +124,16 @@ export function getMovesForPokemon(speciesId: number, pokemonLevel?: number): Ba
 
   // FIX #1: 레벨 기반 스킬 슬롯 해금
   if (pokemonLevel !== undefined) {
-    const { getUnlockedSlotCount } = require('./skill-system');
-    const slots = getUnlockedSlotCount(pokemonLevel);
+    const SLOT_TABLE = [
+      { level: 1, slots: 1 },
+      { level: 5, slots: 2 },
+      { level: 12, slots: 3 },
+      { level: 20, slots: 4 },
+    ];
+    let slots = 1;
+    for (const entry of SLOT_TABLE) {
+      if (pokemonLevel >= entry.level) slots = entry.slots;
+    }
     return moves.slice(0, slots);
   }
 

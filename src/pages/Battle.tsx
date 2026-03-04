@@ -13,7 +13,7 @@ import {
 import { getNpcById, type NpcTrainer } from '@/lib/npc-trainers';
 import { grantRewards } from '@/lib/pet';
 import { applyBattleDamage, canBattle, getInjuredCount } from '@/lib/pokemon-health';
-import { onSkillUsed, findMoveKey, getSkillLevelLabel } from '@/lib/skill-system';
+import { findMoveKey, getSkillLevelLabel, getSkillState } from '@/lib/skill-system';
 
 import BattleSelect from '@/components/battle/BattleSelect';
 import BattleIntro from '@/components/battle/BattleIntro';
@@ -155,17 +155,24 @@ export default function BattlePage() {
     if (!alive.current) return null;
     if (side === 'player') setPlayerAnim('idle'); else setOpponentAnim('idle');
 
-    // Execute attack (mutates HP)
+    // Capture skill level BEFORE attack for level-up detection
+    let skillLevelBefore = 0;
+    let playerMoveKey = '';
+    if (side === 'player') {
+      playerMoveKey = findMoveKey(move);
+      skillLevelBefore = getSkillState(attacker.uid, playerMoveKey).skillLevel;
+    }
+
+    // Execute attack (mutates HP, also tracks skill usage via onSkillUsed)
     const log = doAttack(attacker, defender, state.turnCount, side === 'player', move);
     state.turns.push(log);
     setAllTurnLogs(prev => [...prev, log]);
 
-    // Track skill usage for player moves
+    // Check if skill leveled up after attack
     if (side === 'player') {
-      const moveKey = findMoveKey(move);
-      const result = onSkillUsed(attacker.uid, moveKey);
-      if (result.leveledUp) {
-        const lvLabel = getSkillLevelLabel(result.newLevel);
+      const skillAfter = getSkillState(attacker.uid, playerMoveKey);
+      if (skillAfter.skillLevel > skillLevelBefore) {
+        const lvLabel = getSkillLevelLabel(skillAfter.skillLevel);
         toast.success(`${move.emoji} ${move.name} 스킬 레벨 UP!`, {
           description: `${lvLabel.emoji} ${lvLabel.label} 달성! 위력/명중 보너스 증가`,
           duration: 3000,
