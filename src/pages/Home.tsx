@@ -8,6 +8,7 @@ import { getRunningStats, type RunningStats } from '@/lib/running';
 import { getCollection, getCollectionStats, getParty, syncStarterWithPet } from '@/lib/collection';
 import { getPokemonById } from '@/lib/pokemon-registry';
 import { getBondState, getMoodDialogue, type PokemonMood } from '@/lib/pokemon-bond';
+import { getCompanionDialogue } from '@/lib/companion-dialogue';
 import { getConditionState, getConditionLevel, getConditionEmoji, getConditionLabel } from '@/lib/pokemon-condition';
 import { getRunningStreak } from '@/lib/running-streak';
 import { getTodaySteps } from '@/lib/pedometer';
@@ -53,8 +54,17 @@ export default function Home() {
       return;
     }
     syncStarterWithPet(pet.level, pet.stage, pet.name);
-    // Set initial dialogue based on mood
-    setDialogue(getMoodDialogue(bond.mood));
+    // Set initial dialogue using companion dialogue system (FIX #5)
+    const leadPkm = getParty()[0];
+    const leadName = leadPkm?.nickname || (leadPkm ? getPokemonById(leadPkm.speciesId)?.name : undefined) || pet.name;
+    setDialogue(getCompanionDialogue({
+      pokemonName: leadName,
+      friendship: bond.friendship,
+      condition: condition.condition,
+      lastLoginDate: profile.lastCompletedDate ?? null,
+      streakDays: streak.currentStreak,
+      stepsToday: todaySteps,
+    }));
 
     const attendance = checkAndGrantAttendance();
     if (attendance.isNewDay) {
