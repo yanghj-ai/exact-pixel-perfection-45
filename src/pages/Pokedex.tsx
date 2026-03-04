@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { getAllPokemon, getPokemonById, getEvolutionChain, RARITY_CONFIG, TYPE_CONFIG, type PokemonSpecies, type PokemonType } from '@/lib/pokemon-registry';
-import { getOwnedSpeciesIds, getSeenSpeciesIds, getCollection, getFriendshipLevel } from '@/lib/collection';
+import { getOwnedSpeciesIds, getSeenSpeciesIds, getCollection, getFriendshipLevel, getPokedex, type PokedexEntry } from '@/lib/collection';
 import { getAllLearnableMoves } from '@/lib/battle-moves';
 import { getAllLegendaryDefs, LEGENDARY_DEFS } from '@/lib/legendary';
 import { isChallengeCompleted, CHALLENGE_DEFS } from '@/lib/challenge';
@@ -44,6 +44,7 @@ export default function Pokedex() {
   const ownedIds = getOwnedSpeciesIds();
   const seenIds = getSeenSpeciesIds();
   const collection = getCollection();
+  const pokedex = getPokedex();
   const allPokemon = getAllPokemon();
   const seenOnlyCount = Array.from(seenIds).filter(id => !ownedIds.has(id)).length;
 
@@ -197,9 +198,9 @@ export default function Pokedex() {
                   key={pokemon.id}
                   whileTap={{ scale: 0.95 }}
                   onClick={() => setSelectedPokemon(pokemon)}
-                  className={`relative rounded-2xl p-2.5 flex flex-col items-center gap-1 transition-all border ${
+                  className={`relative rounded-2xl p-2.5 flex flex-col items-center gap-1 transition-all border-2 ${
                     owned
-                      ? 'bg-card border-border/50 hover:border-primary/40 hover:shadow-md'
+                      ? 'bg-card border-yellow-500/60 hover:border-yellow-400 hover:shadow-md shadow-yellow-500/10'
                       : seen
                       ? 'bg-card/50 border-border/30 hover:border-primary/20'
                       : 'bg-muted/30 border-border/20 opacity-40'
@@ -298,6 +299,7 @@ export default function Pokedex() {
                 const instances = ownedOfSpecies(selectedPokemon.id);
                 const rarityConf = RARITY_CONFIG[selectedPokemon.rarity];
                 const evoChain = getEvolutionChain(selectedPokemon.id);
+                const pdxEntry = pokedex[selectedPokemon.id];
 
                 return (
                   <>
@@ -346,7 +348,7 @@ export default function Pokedex() {
                     <div className="flex justify-center -mt-10 relative z-10 mb-4">
                       {owned ? (
                         <motion.div
-                          className="w-24 h-24 rounded-2xl bg-card border-2 border-border shadow-xl flex items-center justify-center"
+                          className="w-24 h-24 rounded-2xl bg-card border-2 border-yellow-500/60 shadow-xl shadow-yellow-500/10 flex items-center justify-center"
                           animate={{ y: [0, -4, 0] }}
                           transition={{ duration: 2.5, repeat: Infinity }}
                         >
@@ -440,14 +442,47 @@ export default function Pokedex() {
                          );
                        })()}
 
+                       {/* Discovery info from pokedex */}
+                       {pdxEntry && (pdxEntry.firstDiscoveredAt || pdxEntry.firstOwnedAt) && (
+                         <div className="glass-card p-3">
+                           <p className="text-[10px] text-muted-foreground font-semibold mb-2">📋 도감 정보</p>
+                           <div className="space-y-1">
+                             {pdxEntry.firstDiscoveredAt && (
+                               <div className="flex justify-between text-[11px]">
+                                 <span className="text-muted-foreground">최초 발견</span>
+                                 <span className="text-foreground font-medium">{pdxEntry.firstDiscoveredAt}</span>
+                               </div>
+                             )}
+                             {pdxEntry.firstDiscoveredLocation && (
+                               <div className="flex justify-between text-[11px]">
+                                 <span className="text-muted-foreground">발견 경로</span>
+                                 <span className="text-foreground font-medium">{pdxEntry.firstDiscoveredLocation}</span>
+                               </div>
+                             )}
+                             {pdxEntry.firstOwnedAt && (
+                               <div className="flex justify-between text-[11px]">
+                                 <span className="text-muted-foreground">최초 포획</span>
+                                 <span className="text-foreground font-medium">{pdxEntry.firstOwnedAt}</span>
+                               </div>
+                             )}
+                             <div className="flex justify-between text-[11px]">
+                               <span className="text-muted-foreground">상태</span>
+                               <span className={`font-bold ${owned ? 'text-yellow-500' : 'text-accent'}`}>
+                                 {owned ? '🔴 포획 완료' : '👁 발견만'}
+                               </span>
+                             </div>
+                           </div>
+                         </div>
+                       )}
+
                        {/* Seen but not owned badge */}
                        {seen && !owned && (
-                         <div className="text-center">
-                            <span className="inline-flex items-center gap-1.5 bg-accent/10 text-accent text-xs px-3 py-1.5 rounded-full font-medium">
-                              👁 배틀에서 조우 — 포획하면 더 많은 정보 확인 가능
-                            </span>
-                          </div>
-                       )}
+                          <div className="text-center">
+                             <span className="inline-flex items-center gap-1.5 bg-accent/10 text-accent text-xs px-3 py-1.5 rounded-full font-medium">
+                               👁 배틀에서 조우 — 포획하면 더 많은 정보 확인 가능
+                             </span>
+                           </div>
+                        )}
 
                        {/* Unknown — show hint for legendary/event */}
                        {!seen && !owned && (() => {

@@ -27,11 +27,21 @@ export interface PokemonEgg {
   acquiredDate: string;
 }
 
+export type PokedexStatus = 'undiscovered' | 'discovered' | 'owned';
+
+export interface PokedexEntry {
+  status: PokedexStatus;
+  firstDiscoveredAt?: string; // ISO date
+  firstDiscoveredLocation?: string; // e.g. '배틀', '러닝', '진화', '알 부화'
+  firstOwnedAt?: string;
+}
+
 export interface CollectionState {
   owned: OwnedPokemon[];
   party: string[]; // uids, max 6
   eggs: PokemonEgg[]; // max 9 eggs
-  seen: number[]; // species ids that have been seen (battle encounter) but not necessarily caught
+  seen: number[]; // legacy - migrated to pokedex
+  pokedex: Record<number, PokedexEntry>;
   coins: number; // Pokécoin for gacha
   totalHatched: number;
   totalEncountered: number;
@@ -47,20 +57,47 @@ function getDefaultState(): CollectionState {
     party: [],
     eggs: [],
     seen: [],
+    pokedex: {},
     coins: 0,
     totalHatched: 0,
     totalEncountered: 0,
   };
 }
 
+/** Migrate legacy seen[] array into pokedex Record */
+function migrateSeenToPokedex(state: CollectionState): CollectionState {
+  if (!state.pokedex) state.pokedex = {};
+  // Migrate legacy seen array
+  if (state.seen && state.seen.length > 0) {
+    for (const id of state.seen) {
+      if (!state.pokedex[id]) {
+        state.pokedex[id] = { status: 'discovered' };
+      }
+    }
+  }
+  // Ensure all owned pokemon are registered as 'owned' in pokedex
+  for (const p of state.owned) {
+    if (!state.pokedex[p.speciesId] || state.pokedex[p.speciesId].status !== 'owned') {
+      state.pokedex[p.speciesId] = {
+        ...state.pokedex[p.speciesId],
+        status: 'owned',
+        firstOwnedAt: state.pokedex[p.speciesId]?.firstOwnedAt || p.acquiredDate,
+      };
+    }
+  }
+  return state;
+}
+
 export function getCollection(): CollectionState {
+  let state: CollectionState;
   if (isCloudReady()) {
     const cached = getCachedCollection();
-    if (cached) return { ...getDefaultState(), ...cached };
+    state = cached ? { ...getDefaultState(), ...cached } : getDefaultState();
+  } else {
+    const data = localStorage.getItem(STORAGE_KEY);
+    state = data ? { ...getDefaultState(), ...JSON.parse(data) } : getDefaultState();
   }
-  const data = localStorage.getItem(STORAGE_KEY);
-  if (data) return { ...getDefaultState(), ...JSON.parse(data) };
-  return getDefaultState();
+  return migrateSeenToPokedex(state);
 }
 
 function saveCollection(state: CollectionState) {
@@ -92,6 +129,7 @@ export function chooseStarter(speciesId: number): OwnedPokemon {
   };
   col.owned.push(pokemon);
   col.party.push(pokemon.uid);
+  registerOwnedInPokedex(col, speciesId, '스타터');
   saveCollection(col);
   return pokemon;
 }
@@ -366,10 +404,16 @@ export function grantExpToParty(totalExp: number, leaderBonusMultiplier: number 
     let evolved = false;
     let evolvedTo: number | undefined;
     if (species.evolveTo.length > 0 && species.evolveLevel && currentLevel >= species.evolveLevel) {
+      const oldSpeciesId = pokemon.speciesId;
       const nextSpeciesId = species.evolveTo[0];
       pokemon.speciesId = nextSpeciesId;
       evolved = true;
       evolvedTo = nextSpeciesId;
+      // Keep pre-evolution as 'discovered', register new as 'owned'
+      if (col.pokedex[oldSpeciesId]?.status === 'owned') {
+        col.pokedex[oldSpeciesId] = { ...col.pokedex[oldSpeciesId], status: 'discovered' };
+      }
+      registerOwnedInPokedex(col, nextSpeciesId, '진화');
       if (!col.seen) col.seen = [];
       if (!col.seen.includes(nextSpeciesId)) col.seen.push(nextSpeciesId);
     }
@@ -433,6 +477,7 @@ export function catchPokemon(speciesId: number): OwnedPokemon {
   };
   col.owned.push(pokemon);
   col.totalEncountered++;
+  registerOwnedInPokedex(col, speciesId, '포획');
   saveCollection(col);
   return pokemon;
 }
@@ -473,23 +518,66 @@ export function getOwnedSpeciesIds(): Set<number> {
 
 export function getSeenSpeciesIds(): Set<number> {
   const col = getCollection();
-  const seen = new Set(col.seen || []);
-  // Owned pokemon are also considered seen
+  const seen = new Set<number>();
+  // From pokedex
+  for (const [idStr, entry] of Object.entries(col.pokedex)) {
+    if (entry.status === 'discovered' || entry.status === 'owned') {
+      seen.add(Number(idStr));
+    }
+  }
+  // Legacy seen array
+  if (col.seen) for (const id of col.seen) seen.add(id);
+  // Owned pokemon
   for (const p of col.owned) seen.add(p.speciesId);
   return seen;
 }
 
-export function markAsSeen(speciesIds: number[]) {
+export function markAsSeen(speciesIds: number[], location?: string) {
   const col = getCollection();
-  if (!col.seen) col.seen = [];
+  if (!col.pokedex) col.pokedex = {};
   let changed = false;
+  const today = new Date().toISOString().split('T')[0];
   for (const id of speciesIds) {
+    if (!col.pokedex[id]) {
+      col.pokedex[id] = {
+        status: 'discovered',
+        firstDiscoveredAt: today,
+        firstDiscoveredLocation: location || '야생',
+      };
+      changed = true;
+    }
+    // Legacy support
+    if (!col.seen) col.seen = [];
     if (!col.seen.includes(id)) {
       col.seen.push(id);
       changed = true;
     }
   }
   if (changed) saveCollection(col);
+}
+
+/** Register a species as 'owned' in the pokedex */
+export function registerOwnedInPokedex(col: CollectionState, speciesId: number, location?: string) {
+  if (!col.pokedex) col.pokedex = {};
+  const today = new Date().toISOString().split('T')[0];
+  const existing = col.pokedex[speciesId];
+  col.pokedex[speciesId] = {
+    status: 'owned',
+    firstDiscoveredAt: existing?.firstDiscoveredAt || today,
+    firstDiscoveredLocation: existing?.firstDiscoveredLocation || location || '포획',
+    firstOwnedAt: existing?.firstOwnedAt || today,
+  };
+}
+
+/** Get pokedex entry for a species */
+export function getPokedexEntry(speciesId: number): PokedexEntry | null {
+  const col = getCollection();
+  return col.pokedex?.[speciesId] || null;
+}
+
+/** Get all pokedex entries */
+export function getPokedex(): Record<number, PokedexEntry> {
+  return getCollection().pokedex || {};
 }
 
 export function setNickname(uid: string, nickname: string) {
@@ -550,6 +638,16 @@ export function syncStarterWithPet(level: number, _stage: string, petName?: stri
   starter.speciesId = resolveStarterSpecies(starter.speciesId, level, petName);
   // Auto-register evolved species in pokedex
   if (starter.speciesId !== oldSpeciesId) {
+    // Keep pre-evolution as 'discovered' in pokedex
+    if (!col.pokedex[oldSpeciesId] || col.pokedex[oldSpeciesId].status === 'owned') {
+      col.pokedex[oldSpeciesId] = {
+        ...col.pokedex[oldSpeciesId],
+        status: 'discovered',
+      };
+    }
+    // Register new evolution as 'owned'
+    registerOwnedInPokedex(col, starter.speciesId, '진화');
+    // Legacy
     if (!col.seen) col.seen = [];
     if (!col.seen.includes(starter.speciesId)) col.seen.push(starter.speciesId);
   }
