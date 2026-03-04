@@ -1,36 +1,87 @@
 
 
-## 고품질 스프라이트시트 재생성 계획
+# 거리 기반 포켓몬 조우 + 포획 조건 퀘스트 시스템
 
-### 현실적 고려사항
+## 현재 상태
+- 전설 포켓몬은 **GPS 핫스팟 기반** (특정 좌표 근처에서만 조우)
+- 일반 포켓몬은 `triggerEncounter()`로 거리 비례 확률 조우 (포획 조건 없음, 즉시 포획)
+- 챌린지 시스템 존재 (streak, distance, pace, count 타입)
 
-AI 이미지 생성으로 **30프레임 일관된 스프라이트시트**를 한 번에 만드는 것은 기술적으로 매우 어렵습니다. AI는 프레임 간 캐릭터 일관성을 완벽히 유지하기 어렵기 때문입니다.
+## 설계
 
-**추천 접근법:** **8프레임**으로 업그레이드하되, 각 프레임의 품질과 일관성을 최대화합니다. 8프레임이면 걷기/뛰기/숨쉬기 등 부드러운 애니메이션을 충분히 표현할 수 있습니다.
+### 1. 일반 포켓몬 포획 퀘스트 시스템 (`src/lib/catch-quest.ts` 신규)
 
-### 구현 내용
+조우 시 즉시 포획이 아닌, **포획 조건 퀘스트**가 부여됨:
 
-1. **Edge Function 생성** (`generate-spritesheet`)
-   - Lovable AI (`google/gemini-2.5-flash-image`)를 사용해 각 진화 단계별 8프레임 스프라이트시트 생성
-   - 프롬프트: "pixel art spritesheet, 8 frames horizontal strip, [character] walking cycle, consistent style, transparent background, 32-bit retro game style"
-   - 생성된 이미지를 Supabase Storage에 저장
+| 포켓몬 등급 | 조우 조건 | 포획 퀘스트 예시 |
+|---|---|---|
+| common | 1km 달리기 | "0.5km 더 달리기" |
+| uncommon | 2km 달리기 | "1km 더 달리기" or "8분/km 이내 페이스" |
+| rare | 3km 달리기 | "2km 더 달리기" or "7분/km 이내 페이스" |
+| epic | 5km 달리기 | "3km 더 달리기 + 7분/km 이내" |
 
-2. **Storage 버킷 설정**
-   - `sprites` 버킷 생성 (public 읽기)
-   - charmander, charmeleon, charizard 각각 저장
+조우 후 런닝 화면에 퀘스트 진행률 표시, 조건 달성 시 포획 확정.
 
-3. **PetSprite.tsx 업데이트**
-   - `FRAME_COUNT`를 4 → 8로 변경
-   - Storage URL에서 스프라이트시트 로드하도록 변경
-   - 폴백으로 기존 로컬 에셋 유지
+### 2. 전설 포켓몬 특수 조건 (기존 `legendary.ts` 확장)
 
-4. **수동 대안** (AI 생성 품질이 부족할 경우)
-   - 기존 4프레임 이미지를 AI 편집으로 개선
-   - 각 프레임을 개별 생성 후 코드로 합성
+GPS 핫스팟 제거 → **거리 + 특수 조건 기반**으로 전환:
 
-### 기술 세부사항
+| 포켓몬 | 조우 조건 | 포획 조건 |
+|---|---|---|
+| 프리져 (144) | 총 누적 50km | 한 세션 3km + 15분 이상 |
+| 썬더 (145) | 총 누적 100km | 한 세션 2km + 페이스 6분/km 이하 |
+| 파이어 (146) | 총 누적 150km | 한 세션 5km |
+| 뮤츠 (150) | **모든 챌린지 완료** | 한 세션 10km or 페이스 5분/km 이하로 5km |
+| 뮤 (151) | **총 누적 1500km** | 한 세션 3km (특별 연출) |
 
-- Edge Function에서 3개 진화 단계 × 1개 스프라이트시트 = 3회 AI 호출
-- 생성 후 base64 → Storage 업로드
-- 프론트엔드는 Storage URL 사용
+### 3. 특수 이벤트 조우 추가
+
+- **이브이 (133)**: 연속 출석 7일 → 조우
+- **라프라스 (131)**: 주간 목표 3주 연속 달성 → 조우
+- **잠만보 (143)**: 총 세션 50회 달성 → 조우
+- **메타몽 (132)**: 도감 50종 이상 등록 → 조우
+
+### 4. 수정 파일 목록
+
+| 파일 | 변경 내용 |
+|---|---|
+| `src/lib/catch-quest.ts` | **신규** — 포획 퀘스트 타입, 생성, 진행률 체크, 완료 로직 |
+| `src/lib/legendary.ts` | GPS 핫스팟 → 거리/챌린지 기반 조건으로 전환, 특수 이벤트 목록 추가 |
+| `src/lib/collection.ts` | `triggerEncounter()` → 즉시 포획 대신 퀘스트 반환, 이벤트 조우 체크 함수 추가 |
+| `src/pages/Running.tsx` | 조우 시 포획 퀘스트 배너 UI, 진행률 표시, 포획 성공 연출 |
+| `src/pages/Pokedex.tsx` | 전설/이벤트 포켓몬 조우 조건 힌트 표시 |
+| `src/components/CatchQuestBanner.tsx` | **신규** — 런닝 중 포획 퀘스트 진행률 배너 컴포넌트 |
+| `src/components/SpecialEncounterOverlay.tsx` | **신규** — 특수 조우/포획 성공 연출 오버레이 |
+
+### 5. 데이터 구조
+
+```text
+CatchQuest {
+  id: string
+  speciesId: number
+  encounterDistanceKm: number   // 조우 시점 거리
+  questType: 'distance' | 'pace' | 'time' | 'combo'
+  requirements: { type, target, unit }[]
+  startedAt: number
+  completed: boolean
+}
+
+SpecialEvent {
+  id: string
+  speciesId: number
+  condition: 'total_distance' | 'all_challenges' | 'streak' | 'weekly_goal_streak' | 'session_count' | 'pokedex_count'
+  targetValue: number
+  description: string
+  hint: string
+}
+```
+
+### 6. 흐름
+
+1. 런닝 중 거리 도달 → `checkEncounter(distanceKm)` → 포켓몬 조우
+2. 조우 시 등급에 맞는 `CatchQuest` 자동 생성
+3. 런닝 화면에 퀘스트 배너 표시 (진행률 바)
+4. 퀘스트 조건 달성 → 포획 연출 + 컬렉션 등록
+5. 런닝 종료 시 미완료 퀘스트는 실패 처리
+6. 전설/이벤트는 홈 또는 도감에서 조건 확인 가능, 조건 달성 시 런닝 시작 시 자동 조우
 
