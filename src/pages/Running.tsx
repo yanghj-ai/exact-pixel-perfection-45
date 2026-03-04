@@ -30,6 +30,12 @@ import {
 import { shouldEncounterNpc, generateAiNpc, resetEncounterDistance, type AiNpcTrainer } from '@/lib/npc-encounter';
 import { addCoins } from '@/lib/collection';
 import { updateChallengesAfterRun, type ChallengeUpdateResult, type ChallengeDefinition } from '@/lib/challenge';
+import { requestWakeLock, releaseWakeLock, requestFullscreen, exitFullscreen } from '@/lib/running-mode';
+import { checkAndAutoCollect, createAutoCollectState, type AutoCollectResult, type AutoCollectState } from '@/lib/auto-collect';
+import {
+  initMediaSession, cleanupMediaSession, updateLockScreenWidget, updateNotificationBar,
+  requestNotificationPermission, showEncounterNotification, showRunEndNotification, clearNotifications,
+} from '@/lib/widget-notification';
 
 import PetSprite from '@/components/PetSprite';
 import BottomNav from '@/components/BottomNav';
@@ -40,8 +46,12 @@ import SpecialEncounterOverlay from '@/components/SpecialEncounterOverlay';
 import LevelUpOverlay from '@/components/LevelUpOverlay';
 import { LegendaryBanner, NpcEncounterBanner } from '@/components/running/RunningBanners';
 import LegendaryPreview from '@/components/running/LegendaryPreview';
+import RunningCountdown from '@/components/running/RunningCountdown';
+import RunningAmoledScreen from '@/components/running/RunningAmoledScreen';
+import LegendaryStoryIntro from '@/components/running/LegendaryStoryIntro';
+import LegendaryCutscene from '@/components/running/LegendaryCutscene';
 
-type RunState = 'idle' | 'running' | 'paused' | 'completed';
+type RunState = 'idle' | 'countdown' | 'running' | 'paused' | 'completed';
 
 // 목표 유형
 type RunGoalType = 'steps_1000' | 'steps_3000' | 'steps_5000' | 'time_10' | 'time_20' | 'time_30' | 'free';
@@ -69,6 +79,7 @@ export default function RunningPage() {
   const [pedometerAvailable, setPedometerAvailable] = useState(true);
   const [showMap, setShowMap] = useState(false);
   const [selectedGoal, setSelectedGoal] = useState<RunGoalType>('free');
+  const [amoledMode, setAmoledMode] = useState(false);
 
   // Milestone messages during run
   const [milestoneMsg, setMilestoneMsg] = useState<string | null>(null);
@@ -104,6 +115,9 @@ export default function RunningPage() {
   const [npcEncounter, setNpcEncounter] = useState<AiNpcTrainer | null>(null);
   const [isGeneratingNpc, setIsGeneratingNpc] = useState(false);
   const lastNpcCheckDistRef = useRef(0);
+  // Auto-collect (실시간 자동 수집)
+  const autoCollectRef = useRef<AutoCollectState>(createAutoCollectState());
+  const [autoCollected, setAutoCollected] = useState<AutoCollectResult[]>([]);
 
   // Refs
   const pedometerRef = useRef<Pedometer | null>(null);
@@ -177,6 +191,26 @@ export default function RunningPage() {
     }, 3000);
     return () => clearInterval(id);
   }, [runState]);
+
+  // 위젯 + 알림바 업데이트 (10초마다)
+  useEffect(() => {
+    if (runState !== 'running') return;
+    const id = setInterval(() => {
+      updateLockScreenWidget({
+        distanceKm: stepsToKm(stepsRef.current, true),
+        pace: gpsTrackerRef.current?.getCurrentPace() ?? null,
+        encounterCount: autoCollectRef.current.encounters.length,
+        companionName: leaderSpecies?.name || '포켓몬',
+        companionImageUrl: leaderSpecies?.spriteUrl,
+      });
+      updateNotificationBar({
+        distanceKm: stepsToKm(stepsRef.current, true),
+        pace: gpsTrackerRef.current?.getCurrentPace() ?? null,
+        encounterCount: autoCollectRef.current.encounters.length,
+      });
+    }, 10000);
+    return () => clearInterval(id);
+  }, [runState, leaderSpecies]);
 
   const currentDistance = stepDistance;
 
@@ -256,6 +290,36 @@ export default function RunningPage() {
     }
   }, [runState, currentDistance, isGeneratingNpc, npcEncounter]);
 
+  // Auto-collect: 0.5km마다 실시간 포획 체크
+  useEffect(() => {
+    if (runState !== 'running') return;
+    const lastGps = gpsPoints.length > 0 ? gpsPoints[gpsPoints.length - 1] : null;
+    const result = checkAndAutoCollect(
+      autoCollectRef.current,
+      currentDistance,
+      currentPace ?? 8.0,
+      lastGps?.lat,
+      lastGps?.lng,
+    );
+    if (result) {
+      setAutoCollected(prev => [...prev, result]);
+      const gradeEmoji = { normal: '', rare: '⭐ ', unique: '⚡ ' };
+      const prefix = result.isNew ? '🌟 새로운 포켓몬! ' : '';
+      toast(`${prefix}${gradeEmoji[result.grade]}${result.name} 획득!`, {
+        description: `${result.distanceAtEncounter.toFixed(1)}km 지점`,
+        duration: result.grade === 'unique' ? 5000 : 3000,
+      });
+      // 잠금화면 알림
+      const species = getPokemonById(result.speciesId);
+      showEncounterNotification({
+        name: result.name,
+        grade: result.grade,
+        isNew: result.isNew,
+        imageUrl: species?.spriteUrl,
+      });
+    }
+  }, [runState, currentDistance, currentPace, gpsPoints.length]);
+
   const handleBattleNpc = () => {
     if (!npcEncounter) return;
     sessionStorage.setItem('routinmon-ai-npc', JSON.stringify(npcEncounter));
@@ -279,6 +343,17 @@ export default function RunningPage() {
     setCompletedData(null);
     milestoneShownRef.current.clear();
     setMilestoneMsg(null);
+    autoCollectRef.current = createAutoCollectState();
+    setAutoCollected([]);
+
+    // 카운트다운 시작
+    setRunState('countdown');
+  };
+
+  const handleCountdownComplete = useCallback(async () => {
+    // Wake Lock + 전체화면
+    await requestWakeLock();
+    await requestFullscreen();
 
     const pedometer = new Pedometer((s) => { stepsRef.current = s; setSteps(s); });
     const pedometerStarted = await pedometer.start();
@@ -294,11 +369,16 @@ export default function RunningPage() {
     gpsTrackerRef.current = gpsTracker;
     if (gpsStarted) setShowMap(true);
 
+    // 위젯 + 알림 초기화
+    initMediaSession();
+    requestNotificationPermission();
+
+    setAmoledMode(true);
     setRunState('running');
     toast('🏃 런닝 시작!', {
-      description: `${leaderSpecies?.name || '포켓몬'}와 함께 출발! ${!pedometerStarted ? '(GPS 모드)' : ''}`,
+      description: `${leaderSpecies?.name || '포켓몬'}와 함께 출발! ${!pedometerRef.current ? '(GPS 모드)' : ''}`,
     });
-  };
+  }, [leaderSpecies]);
 
   const handlePause = () => {
     setRunState('paused');
@@ -321,6 +401,12 @@ export default function RunningPage() {
   };
 
   const handleStop = () => {
+    // Wake Lock + 전체화면 + 미디어세션 해제
+    releaseWakeLock();
+    exitFullscreen();
+    cleanupMediaSession();
+    setAmoledMode(false);
+
     const finalSteps = stepsRef.current;
     const finalDuration = elapsedRef.current;
     pedometerRef.current?.stop();
@@ -377,23 +463,32 @@ export default function RunningPage() {
     // Party EXP
     const partyResults = grantExpToParty(rewards.exp);
 
-    // 지역 기반 포켓몬 조우 처리
+    // 자동 수집된 포켓몬을 SpawnResult 형태로 변환 (이미 포획 완료)
+    const autoCollectedIds = new Set(autoCollected.map(a => a.speciesId));
+    const spawnResults: SpawnResult[] = autoCollected.map(a => ({
+      speciesId: a.speciesId,
+      name: a.name,
+      grade: a.grade,
+      isNew: a.isNew,
+    }));
+
+    // 추가 조우 처리 (자동 수집에서 놓친 것들)
     const lastGpsPoint = gpsPoints.length > 0 ? gpsPoints[gpsPoints.length - 1] : null;
     const region = lastGpsPoint ? findRegionByGps(lastGpsPoint.lat, lastGpsPoint.lng) : null;
     const distKm = Math.round(stepsToKm(finalSteps, true) * 100) / 100;
     const runPace = pace ?? 8.0;
     const totalKm = getRunningStats().totalDistanceKm + distKm;
-    const spawnResults = processEncounters(region, distKm, runPace, totalKm);
 
-    // 조우한 포켓몬 즉시 획득
-    for (const spawn of spawnResults) {
-      catchPokemon(spawn.speciesId);
-      markAsSeen([spawn.speciesId]);
-      const gradeInfo = getGradeInfo(spawn.grade);
-      toast(`${gradeInfo.emoji} ${spawn.name} 획득!`, {
-        description: spawn.isNew ? '🆕 새로운 포켓몬!' : '도감에 등록된 포켓몬',
-        duration: 3000,
-      });
+    // 자동 수집으로 5마리 미만이면 추가 조우 가능
+    if (spawnResults.length < 5) {
+      const extraEncounters = processEncounters(region, distKm, runPace, totalKm);
+      for (const spawn of extraEncounters) {
+        if (autoCollectedIds.has(spawn.speciesId)) continue; // 중복 방지
+        if (spawnResults.length >= 5) break;
+        catchPokemon(spawn.speciesId);
+        markAsSeen([spawn.speciesId]);
+        spawnResults.push(spawn);
+      }
     }
 
     // 챌린지 업데이트
@@ -462,6 +557,9 @@ export default function RunningPage() {
       challengeResults: challengeResults.newlyCompleted.length > 0 ? challengeResults : null,
     });
 
+    // 종료 알림
+    showRunEndNotification(distKm, spawnResults.length);
+    clearNotifications();
     setRunState('completed');
   };
 
@@ -470,8 +568,21 @@ export default function RunningPage() {
       pedometerRef.current?.stop();
       gpsTrackerRef.current?.stop();
       if (timerRef.current) clearInterval(timerRef.current);
+      releaseWakeLock();
+      exitFullscreen();
+      cleanupMediaSession();
+      clearNotifications();
     };
   }, []);
+
+  // ─── Countdown Screen ──────────────────────────────────
+  if (runState === 'countdown') {
+    return <RunningCountdown onComplete={handleCountdownComplete} />;
+  }
+
+  // ─── AMOLED Running Mode Screen ────────────────────────
+  // 러닝 중이고 AMOLED 모드일 때 전체화면 검은 배경 표시
+  const spawnCount = autoCollected.length;
 
   // ─── Completed Screen ──────────────────────────────────
   if (runState === 'completed' && completedData) {
@@ -698,11 +809,31 @@ export default function RunningPage() {
   // ─── Active / Idle Screen ──────────────────────────────
   return (
     <div className="min-h-screen pb-24">
+      {/* AMOLED Running Mode Overlay */}
+      {amoledMode && (runState === 'running' || runState === 'paused') && (
+        <RunningAmoledScreen
+          elapsed={elapsed}
+          distanceKm={currentDistance}
+          pace={currentPace}
+          encounterCount={spawnCount}
+          companionSpeciesId={leaderSpecies?.id ?? null}
+          companionName={leaderSpecies?.name || '포켓몬'}
+          isPaused={runState === 'paused'}
+          onPause={handlePause}
+          onResume={handleResume}
+          onStop={handleStop}
+        />
+      )}
       <div className="mx-auto max-w-md px-5 pt-8">
         {/* Header */}
         <div className="flex items-center justify-between mb-6">
           <h1 className="text-xl font-bold text-foreground">🏃 런닝</h1>
           <div className="flex items-center gap-3">
+            {runState !== 'idle' && (
+              <button onClick={() => { setAmoledMode(v => !v); if (!amoledMode) requestFullscreen(); else exitFullscreen(); }} className={`flex items-center gap-1 rounded-full px-3 py-1 text-xs font-medium transition-colors ${amoledMode ? 'bg-primary/20 text-primary' : 'bg-muted text-muted-foreground'}`}>
+                🖥️ {amoledMode ? 'ON' : 'OFF'}
+              </button>
+            )}
             {runState !== 'idle' && gpsAvailable && (
               <button onClick={() => setShowMap(v => !v)} className={`flex items-center gap-1 rounded-full px-3 py-1 text-xs font-medium transition-colors ${showMap ? 'bg-primary/20 text-primary' : 'bg-muted text-muted-foreground'}`}>
                 <Map size={12} /> 지도
