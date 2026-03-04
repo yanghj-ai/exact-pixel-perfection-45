@@ -136,7 +136,7 @@ export default function Onboarding() {
             initial={{ scale: 0 }}
             animate={{ scale: 1 }}
             transition={{ delay: 0.3, type: 'spring', stiffness: 200 }}
-            className="w-40 h-40 object-contain mx-auto mb-4"
+            className="w-56 h-56 object-contain mx-auto mb-4"
           />
           <motion.p
             initial={{ opacity: 0, y: 10 }}
@@ -160,7 +160,7 @@ export default function Onboarding() {
           <motion.img
             src={professorOakImg}
             alt="오박사"
-            className="w-32 h-32 object-contain mx-auto mb-8"
+            className="w-44 h-44 object-contain mx-auto mb-8"
             animate={{ y: [0, -6, 0] }}
             transition={{ duration: 3, repeat: Infinity }}
           />
@@ -212,7 +212,7 @@ export default function Onboarding() {
     return (
       <div className="min-h-screen bg-background flex flex-col items-center justify-center px-6">
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="text-center max-w-sm w-full">
-          <img src={professorOakImg} alt="오박사" className="w-24 h-24 object-contain mx-auto mb-4" />
+          <img src={professorOakImg} alt="오박사" className="w-36 h-36 object-contain mx-auto mb-4" />
           <div className="glass-card p-5 text-left mb-6">
             <p className="text-xs text-primary font-bold mb-1.5">오박사</p>
             <p className="text-sm text-foreground leading-relaxed">
@@ -248,7 +248,7 @@ export default function Onboarding() {
     return (
       <div className="min-h-screen bg-background flex flex-col items-center justify-center px-6">
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="text-center max-w-sm w-full">
-          <img src={professorOakImg} alt="오박사" className="w-24 h-24 object-contain mx-auto mb-4" />
+          <img src={professorOakImg} alt="오박사" className="w-36 h-36 object-contain mx-auto mb-4" />
           <div className="glass-card p-5 text-left mb-6">
             <p className="text-xs text-primary font-bold mb-1.5">오박사</p>
             <p className="text-sm text-foreground leading-relaxed">
@@ -284,7 +284,7 @@ export default function Onboarding() {
       <div className="min-h-screen bg-background flex flex-col items-center justify-center px-6">
         <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="max-w-sm w-full">
           <div className="text-center mb-4">
-            <img src={professorOakImg} alt="오박사" className="w-20 h-20 object-contain mx-auto mb-3" />
+            <img src={professorOakImg} alt="오박사" className="w-32 h-32 object-contain mx-auto mb-3" />
             <div className="glass-card p-4 text-left mb-5">
               <p className="text-xs text-primary font-bold mb-1.5">오박사</p>
               <p className="text-sm text-foreground leading-relaxed">
