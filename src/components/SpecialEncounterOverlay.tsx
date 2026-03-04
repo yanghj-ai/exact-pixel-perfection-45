@@ -2,6 +2,7 @@
 // 특수 조우 / 전설 포켓몬 포획 성공 연출 오버레이
 // ═══════════════════════════════════════════════════════════
 
+import React from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { getPokemonById } from '@/lib/pokemon-registry';
 
@@ -12,7 +13,7 @@ interface SpecialEncounterOverlayProps {
   onClose: () => void;
 }
 
-export default function SpecialEncounterOverlay({ show, speciesId, type, onClose }: SpecialEncounterOverlayProps) {
+const SpecialEncounterOverlay = React.forwardRef<HTMLDivElement, SpecialEncounterOverlayProps>(function SpecialEncounterOverlay({ show, speciesId, type, onClose }, ref) {
   if (!show || !speciesId) return null;
 
   const species = getPokemonById(speciesId);
@@ -106,4 +107,6 @@ export default function SpecialEncounterOverlay({ show, speciesId, type, onClose
       )}
     </AnimatePresence>
   );
-}
+});
+
+export default SpecialEncounterOverlay;

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { getPokemonById, RARITY_CONFIG } from '@/lib/pokemon-registry';
 import type { PokemonEgg } from '@/lib/collection';
@@ -8,7 +8,7 @@ interface EggHatchOverlayProps {
   onComplete: () => void;
 }
 
-export default function EggHatchOverlay({ hatchedEggs, onComplete }: EggHatchOverlayProps) {
+const EggHatchOverlay = React.forwardRef<HTMLDivElement, EggHatchOverlayProps>(function EggHatchOverlay({ hatchedEggs, onComplete }, ref) {
   const [currentIdx, setCurrentIdx] = useState(0);
   const [phase, setPhase] = useState<'crack' | 'reveal'>('crack');
 
@@ -38,6 +38,7 @@ export default function EggHatchOverlay({ hatchedEggs, onComplete }: EggHatchOve
 
   return (
     <motion.div
+      ref={ref}
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
@@ -189,4 +190,6 @@ export default function EggHatchOverlay({ hatchedEggs, onComplete }: EggHatchOve
       </div>
     </motion.div>
   );
-}
+});
+
+export default EggHatchOverlay;

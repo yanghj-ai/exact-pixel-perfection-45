@@ -1,3 +1,4 @@
+import React from 'react';
 import { Home, Play, Swords, ShoppingBag, Settings } from 'lucide-react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
@@ -10,12 +11,12 @@ const tabs = [
   { path: '/settings', icon: Settings, label: '설정' },
 ];
 
-export default function BottomNav() {
+const BottomNav = React.forwardRef<HTMLElement, {}>(function BottomNav(_, ref) {
   const location = useLocation();
   const navigate = useNavigate();
 
   return (
-    <nav className="fixed bottom-0 left-0 right-0 z-50 glass-card rounded-none border-t border-border/30 px-2 pb-[env(safe-area-inset-bottom)]">
+    <nav ref={ref} className="fixed bottom-0 left-0 right-0 z-50 glass-card rounded-none border-t border-border/30 px-2 pb-[env(safe-area-inset-bottom)]">
       <div className="mx-auto flex max-w-md items-center justify-around py-2">
         {tabs.map((tab) => {
           const active = location.pathname === tab.path;
@@ -49,4 +50,6 @@ export default function BottomNav() {
       </div>
     </nav>
   );
-}
+});
+
+export default BottomNav;
