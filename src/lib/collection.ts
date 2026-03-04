@@ -3,6 +3,7 @@
 // ═══════════════════════════════════════════════════════════
 
 import { getPokemonById, getPokemonByRarity, type Rarity, type PokemonSpecies } from './pokemon-registry';
+import { getCachedCollection, setCachedCollection, syncOwnedPokemonToDB, syncEggsToDB, isCloudReady } from './cloud-storage';
 
 // ─── Types ───────────────────────────────────────────────
 
@@ -53,6 +54,10 @@ function getDefaultState(): CollectionState {
 }
 
 export function getCollection(): CollectionState {
+  if (isCloudReady()) {
+    const cached = getCachedCollection();
+    if (cached) return { ...getDefaultState(), ...cached };
+  }
   const data = localStorage.getItem(STORAGE_KEY);
   if (data) return { ...getDefaultState(), ...JSON.parse(data) };
   return getDefaultState();
@@ -60,6 +65,11 @@ export function getCollection(): CollectionState {
 
 function saveCollection(state: CollectionState) {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  if (isCloudReady()) {
+    setCachedCollection(state);
+    syncOwnedPokemonToDB(state.owned);
+    syncEggsToDB(state.eggs);
+  }
 }
 
 // ─── Starter ─────────────────────────────────────────────

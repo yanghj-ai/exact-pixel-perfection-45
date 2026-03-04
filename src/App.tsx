@@ -7,6 +7,7 @@ import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { migrateLocalStorageToCloud } from "@/lib/migration";
+import { initializeCloudCache, clearCloudCache } from "@/lib/cloud-storage";
 import { getProfile } from "./lib/storage";
 import Onboarding from "./pages/Onboarding";
 import Home from "./pages/Home";
@@ -29,13 +30,20 @@ function MigrationHandler({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     if (user) {
-      migrateLocalStorageToCloud(user).then((didMigrate) => {
+      (async () => {
+        // Initialize cloud cache first
+        await initializeCloudCache(user.id);
+        // Then migrate any remaining localStorage data
+        const didMigrate = await migrateLocalStorageToCloud(user);
         if (didMigrate) {
+          // Re-initialize cache after migration
+          await initializeCloudCache(user.id);
           toast.success('기존 데이터를 클라우드로 이전했습니다! ☁️');
         }
         setMigrationDone(true);
-      });
+      })();
     } else {
+      clearCloudCache();
       setMigrationDone(true);
     }
   }, [user]);

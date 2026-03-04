@@ -1,6 +1,7 @@
 // Pet state management for Routinmon
 import { syncStarterWithPet } from '@/lib/collection';
 import { getPokemonById } from './pokemon-registry';
+import { getCachedPet, setCachedPet, isCloudReady } from './cloud-storage';
 
 export type PokemonStage = 'charmander' | 'charmeleon' | 'charizard';
 
@@ -38,6 +39,10 @@ const DEFAULT_PET: PetState = {
 };
 
 export function getPet(): PetState {
+  if (isCloudReady()) {
+    const cached = getCachedPet();
+    if (cached) return { ...DEFAULT_PET, ...cached };
+  }
   const data = localStorage.getItem('routinmon-pet');
   return data ? { ...DEFAULT_PET, ...JSON.parse(data) } : DEFAULT_PET;
 }
@@ -46,6 +51,9 @@ export function savePet(updates: Partial<PetState>): PetState {
   const current = getPet();
   const updated = { ...current, ...updates };
   localStorage.setItem('routinmon-pet', JSON.stringify(updated));
+  if (isCloudReady()) {
+    setCachedPet(updated);
+  }
   return updated;
 }
 
