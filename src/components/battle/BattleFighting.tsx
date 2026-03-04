@@ -1,18 +1,22 @@
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { type BattleMove } from '@/lib/battle-moves';
-import { type BattlePokemon, type BattleTurnLog, type TurnBasedBattleState, getEffectiveness } from '@/lib/battle';
-import { getMovesForLevel } from '@/lib/battle-moves';
+import { type TurnBasedBattleState, getEffectiveness } from '@/lib/battle';
 import { type NpcTrainer } from '@/lib/npc-trainers';
+import BattleMessageBox from './BattleMessageBox';
+
+export type SpriteAnim = 'idle' | 'attacking' | 'hit' | 'fainting' | 'entering' | 'fainted';
 
 interface BattleFightingProps {
   battleState: TurnBasedBattleState;
   selectedNpc: NpcTrainer;
-  isAnimating: boolean;
-  currentTurnLogs: BattleTurnLog[];
-  allTurnLogs: BattleTurnLog[];
-  animatingTurnIdx: number;
-  animSubPhase: 'attack' | 'result';
+  message: string | null;
+  onMessageComplete: () => void;
+  waitingForInput: boolean;
+  waitingForSwitch: boolean;
+  playerAnim: SpriteAnim;
+  opponentAnim: SpriteAnim;
+  critFlash: boolean;
   onMoveSelect: (move: BattleMove) => void;
   onSwitch: (idx: number) => void;
 }
@@ -36,35 +40,81 @@ const TYPE_COLORS: Record<string, string> = {
   normal: 'bg-gray-400/20 border-gray-400/40',
 };
 
+function getSpriteAnimate(anim: SpriteAnim, side: 'player' | 'opponent') {
+  switch (anim) {
+    case 'attacking':
+      return side === 'player'
+        ? { x: [0, 15, 0], transition: { duration: 0.3 } }
+        : { x: [0, -15, 0], transition: { duration: 0.3 } };
+    case 'hit':
+      return { x: [0, -6, 6, -3, 0], opacity: [1, 0.3, 1, 0.3, 1], transition: { duration: 0.35 } };
+    case 'fainting':
+      return { y: 30, opacity: 0, transition: { duration: 0.5 } };
+    case 'entering':
+      return { y: [30, 0], opacity: [0, 1], transition: { duration: 0.6, ease: 'easeOut' as const } };
+    case 'fainted':
+      return { y: 30, opacity: 0, transition: { duration: 0 } };
+    default:
+      return { x: 0, y: 0, opacity: 1, transition: { duration: 0.2 } };
+  }
+}
+
+function HpBar({ current, max }: { current: number; max: number }) {
+  const ratio = Math.max(0, current / max);
+  const color = ratio > 0.5 ? 'hsl(var(--heal-green))' : ratio > 0.2 ? 'hsl(var(--amber))' : 'hsl(var(--destructive))';
+  return (
+    <div className="h-2 rounded-full bg-muted overflow-hidden">
+      <motion.div
+        className="h-full rounded-full"
+        style={{ background: color }}
+        initial={false}
+        animate={{ width: `${ratio * 100}%` }}
+        transition={{ duration: 0.6, ease: 'easeOut' }}
+      />
+    </div>
+  );
+}
+
 export default function BattleFighting({
-  battleState, selectedNpc, isAnimating, currentTurnLogs, allTurnLogs,
-  animatingTurnIdx, animSubPhase, onMoveSelect, onSwitch,
+  battleState, selectedNpc, message, onMessageComplete,
+  waitingForInput, waitingForSwitch,
+  playerAnim, opponentAnim, critFlash,
+  onMoveSelect, onSwitch,
 }: BattleFightingProps) {
   const [showSwitchPanel, setShowSwitchPanel] = useState(false);
 
   const player = battleState.playerTeam[battleState.playerIdx];
   const opponent = battleState.opponentTeam[battleState.opponentIdx];
 
-  const currentLog = isAnimating && animatingTurnIdx < currentTurnLogs.length ? currentTurnLogs[animatingTurnIdx] :
-                     isAnimating && animatingTurnIdx > 0 ? currentTurnLogs[animatingTurnIdx - 1] : null;
-  const isPlayerAttacking = currentLog ? !currentLog.attackerUid.startsWith('npc_') : false;
-
-  const playerMoves = player
-    ? (player.moves.length > 0 ? player.moves : getMovesForLevel(player.types, player.level))
-    : [];
+  const playerMoves = player?.moves || [];
 
   const getEffLabel = (move: BattleMove) => {
     if (!opponent) return null;
     const eff = getEffectiveness(move.type, opponent.types);
-    if (eff > 1) return { label: '효과적!', color: 'text-heal' };
+    if (eff >= 2) return { label: '효과적!', color: 'text-heal' };
+    if (eff === 0) return { label: '무효!', color: 'text-muted-foreground' };
     if (eff < 1) return { label: '비효과', color: 'text-muted-foreground' };
     return null;
   };
 
   return (
-    <div className="min-h-screen flex flex-col">
+    <div className="min-h-screen flex flex-col relative">
+      {/* Critical flash overlay */}
+      <AnimatePresence>
+        {critFlash && (
+          <motion.div
+            key="crit-flash"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 0.6 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.1 }}
+            className="absolute inset-0 bg-white z-50 pointer-events-none"
+          />
+        )}
+      </AnimatePresence>
+
       <div className="mx-auto max-w-md w-full px-5 pt-6 flex-1 flex flex-col">
-        {/* Opponent info */}
+        {/* ── Opponent info ── */}
         <div className="flex items-center gap-3 mb-2">
           <div className="flex-1">
             <div className="flex items-center gap-2">
@@ -74,15 +124,7 @@ export default function BattleFighting({
                 <span key={t} className="text-[8px] px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground capitalize">{t}</span>
               ))}
             </div>
-            <div className="h-2 rounded-full bg-muted overflow-hidden mt-1">
-              <motion.div
-                className="h-full rounded-full"
-                style={{ background: ((opponent?.currentHp || 0) / (opponent?.maxHp || 1)) > 0.5 ? 'hsl(var(--heal-green))' : ((opponent?.currentHp || 0) / (opponent?.maxHp || 1)) > 0.2 ? 'hsl(var(--amber))' : 'hsl(var(--destructive))' }}
-                initial={false}
-                animate={{ width: `${Math.max(0, ((opponent?.currentHp || 0) / (opponent?.maxHp || 1)) * 100)}%` }}
-                transition={{ duration: 0.4 }}
-              />
-            </div>
+            {opponent && <HpBar current={opponent.currentHp} max={opponent.maxHp} />}
             <div className="flex items-center justify-between mt-0.5">
               <p className="text-[9px] text-muted-foreground">{Math.max(0, opponent?.currentHp || 0)}/{opponent?.maxHp || 0}</p>
               <div className="flex gap-1">
@@ -94,22 +136,13 @@ export default function BattleFighting({
           </div>
         </div>
 
-        {/* Battle field */}
+        {/* ── Battle field ── */}
         <div className="relative flex-1 min-h-[180px] flex items-center justify-between px-4">
           <div />
           {opponent && (
             <motion.div
               key={`opp-${opponent.uid}`}
-              animate={
-                currentLog && animSubPhase === 'attack' && currentLog.attackerUid === opponent.uid
-                  ? { x: [0, -15, 0], transition: { duration: 0.3 } }
-                  : currentLog && animSubPhase === 'result' && currentLog.defenderUid === opponent.uid && !currentLog.missed
-                  ? { x: [0, 6, -6, 3, 0], opacity: [1, 0.4, 1, 0.6, 1] }
-                  : currentLog && currentLog.defenderFainted && currentLog.defenderUid === opponent.uid && animSubPhase === 'result'
-                  ? { y: 40, opacity: 0, transition: { duration: 0.6 } }
-                  : {}
-              }
-              transition={{ duration: 0.35 }}
+              animate={getSpriteAnimate(opponentAnim, 'opponent')}
             >
               <img src={opponent.spriteUrl} alt={opponent.name} className="w-24 h-24 object-contain" style={{ imageRendering: 'pixelated' }} />
             </motion.div>
@@ -118,72 +151,21 @@ export default function BattleFighting({
             <motion.div
               key={`plr-${player.uid}`}
               className="absolute bottom-4 left-4"
-              animate={
-                currentLog && animSubPhase === 'attack' && currentLog.attackerUid === player.uid
-                  ? { x: [0, 15, 0], transition: { duration: 0.3 } }
-                  : currentLog && animSubPhase === 'result' && currentLog.defenderUid === player.uid && !currentLog.missed
-                  ? { x: [0, -6, 6, -3, 0], opacity: [1, 0.4, 1, 0.6, 1] }
-                  : currentLog && currentLog.defenderFainted && currentLog.defenderUid === player.uid && animSubPhase === 'result'
-                  ? { y: 40, opacity: 0, transition: { duration: 0.6 } }
-                  : {}
-              }
-              transition={{ duration: 0.35 }}
+              animate={getSpriteAnimate(playerAnim, 'player')}
             >
               <img src={player.spriteUrl} alt={player.name} className="w-20 h-20 object-contain" style={{ imageRendering: 'pixelated' }} />
             </motion.div>
           )}
-
-          {/* Move effect emoji */}
-          <AnimatePresence>
-            {currentLog && animSubPhase === 'attack' && !currentLog.missed && currentLog.damage > 0 && (
-              <motion.div
-                key={`eff-${allTurnLogs.length}-${animatingTurnIdx}`}
-                initial={{ opacity: 0, scale: 0.3 }}
-                animate={{ opacity: 1, scale: 1.3 }}
-                exit={{ opacity: 0, scale: 0.5 }}
-                transition={{ type: 'spring', damping: 10, delay: 0.4 }}
-                className={`absolute ${currentLog.defenderUid.startsWith('npc_') ? 'top-1/3 right-1/4' : 'bottom-1/3 left-1/4'}`}
-              >
-                <span className="text-3xl drop-shadow-lg">{currentLog.move.emoji}</span>
-              </motion.div>
-            )}
-          </AnimatePresence>
-
-          {/* Damage number popup */}
-          <AnimatePresence>
-            {currentLog && animSubPhase === 'result' && !currentLog.missed && currentLog.damage > 0 && (
-              <motion.div
-                key={`dmg-${allTurnLogs.length}-${animatingTurnIdx}`}
-                initial={{ opacity: 0, y: 0, scale: 0.5 }}
-                animate={{ opacity: 1, y: -25, scale: 1 }}
-                exit={{ opacity: 0, y: -40 }}
-                transition={{ duration: 0.5 }}
-                className={`absolute ${currentLog.defenderUid.startsWith('npc_') ? 'top-1/4 right-1/4' : 'bottom-1/4 left-1/4'}`}
-              >
-                <span className={`text-lg font-black ${currentLog.critical ? 'text-primary text-xl' : 'text-destructive'}`}>
-                  {currentLog.critical && '💥 '}-{currentLog.damage}
-                </span>
-              </motion.div>
-            )}
-          </AnimatePresence>
         </div>
 
-        {/* Player HP */}
+        {/* ── Player HP ── */}
         <div className="flex items-center gap-3 mt-2 mb-2">
           <div className="flex-1 text-right">
             <div className="flex items-center justify-end gap-2">
               <p className="text-[10px] text-muted-foreground">Lv.{player?.level || 0}</p>
               <p className="text-xs font-bold text-foreground">{player?.nickname || player?.name || '???'}</p>
             </div>
-            <div className="h-2 rounded-full bg-muted overflow-hidden mt-1">
-              <motion.div
-                className="h-full rounded-full"
-                style={{ background: ((player?.currentHp || 0) / (player?.maxHp || 1)) > 0.5 ? 'hsl(var(--heal-green))' : ((player?.currentHp || 0) / (player?.maxHp || 1)) > 0.2 ? 'hsl(var(--amber))' : 'hsl(var(--destructive))' }}
-                initial={false}
-                animate={{ width: `${Math.max(0, ((player?.currentHp || 0) / (player?.maxHp || 1)) * 100)}%` }}
-                transition={{ duration: 0.4 }}
-              />
-            </div>
+            {player && <HpBar current={player.currentHp} max={player.maxHp} />}
             <div className="flex items-center justify-between mt-0.5">
               <div className="flex gap-1">
                 {battleState.playerTeam.map((p, i) => (
@@ -195,78 +177,75 @@ export default function BattleFighting({
           </div>
         </div>
 
-        {/* Turn log message */}
-        <div className="glass-card p-3 min-h-[60px] flex items-center mb-3">
-          <AnimatePresence mode="wait">
-            {currentLog && isAnimating ? (
-              <motion.div key={`log-${allTurnLogs.length}-${animatingTurnIdx}-${animSubPhase}`} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} transition={{ duration: 0.15 }} className="w-full">
-                {animSubPhase === 'attack' && (
-                  <div className="flex items-center gap-1.5 flex-wrap">
-                    <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-semibold ${isPlayerAttacking ? 'bg-primary/20 text-primary' : 'bg-destructive/20 text-destructive'}`}>
-                      {isPlayerAttacking ? '아군' : '상대'}
-                    </span>
-                    <span className="text-xs text-foreground">
-                      <span className="font-bold">
-                        {currentLog.attackerUid.startsWith('npc_')
-                          ? (battleState.opponentTeam.find(p => p.uid === currentLog.attackerUid)?.nickname || battleState.opponentTeam.find(p => p.uid === currentLog.attackerUid)?.name)
-                          : (player?.nickname || player?.name)
-                        }
-                      </span>의 {currentLog.move.emoji} <span className="font-semibold">{currentLog.move.name}</span>!
-                    </span>
-                  </div>
-                )}
-                {animSubPhase === 'result' && (
-                  <div className="space-y-0.5">
-                    {currentLog.missed ? (
-                      <p className="text-xs text-muted-foreground">하지만 빗나갔다!</p>
-                    ) : (
-                      <>
-                        {currentLog.effectiveness > 1 && <p className="text-[10px] text-heal font-semibold">효과는 굉장했다!</p>}
-                        {currentLog.effectiveness < 1 && <p className="text-[10px] text-muted-foreground">효과가 별로인 듯하다...</p>}
-                        {currentLog.critical && <p className="text-[10px] text-primary font-bold">급소에 맞았다!</p>}
-                        {currentLog.statusApplied === 'burn' && <p className="text-[10px] text-accent">🔥 화상을 입었다!</p>}
-                        {currentLog.statusApplied === 'freeze' && <p className="text-[10px] text-accent">❄️ 얼어붙었다!</p>}
-                        {currentLog.statusApplied === 'paralyze' && <p className="text-[10px] text-accent">⚡ 마비되었다!</p>}
-                        {currentLog.statusApplied === 'lower_def' && <p className="text-[10px] text-accent">⬇️ 방어가 떨어졌다!</p>}
-                        {currentLog.healAmount > 0 && <p className="text-[10px] text-heal">💚 {currentLog.healAmount} HP 회복!</p>}
-                        {currentLog.defenderFainted && (
-                          <p className="text-xs text-destructive font-bold">
-                            {currentLog.defenderUid.startsWith('npc_') ? '상대' : '아군'} 포켓몬이 쓰러졌다!
-                          </p>
-                        )}
-                        {!currentLog.effectiveness || (currentLog.effectiveness === 1 && !currentLog.critical && !currentLog.statusApplied && !currentLog.healAmount && !currentLog.defenderFainted) ? (
-                          <p className="text-[10px] text-muted-foreground">{currentLog.damage} 데미지</p>
-                        ) : null}
-                      </>
-                    )}
-                  </div>
-                )}
-              </motion.div>
-            ) : (
-              <motion.p initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="text-xs text-muted-foreground w-full text-center">
-                ⚔️ 기술을 선택하세요!
-              </motion.p>
-            )}
-          </AnimatePresence>
+        {/* ── Message Box ── */}
+        <div className="mb-3">
+          {message ? (
+            <BattleMessageBox message={message} onComplete={onMessageComplete} />
+          ) : waitingForInput ? (
+            <div className="bg-black/80 text-white rounded-xl px-4 py-3 min-h-[56px] flex items-center">
+              <p className="text-sm text-white/70">⚔️ 기술을 선택하세요!</p>
+            </div>
+          ) : waitingForSwitch ? (
+            <div className="bg-black/80 text-white rounded-xl px-4 py-3 min-h-[56px] flex items-center">
+              <p className="text-sm text-white/70">🔄 다음 포켓몬을 선택하세요!</p>
+            </div>
+          ) : (
+            <div className="bg-black/80 rounded-xl px-4 py-3 min-h-[56px] flex items-center justify-center">
+              <div className="flex items-center gap-2">
+                <div className="w-2 h-2 rounded-full bg-primary animate-pulse" />
+                <span className="text-xs text-white/50">배틀 진행 중...</span>
+              </div>
+            </div>
+          )}
         </div>
 
-        {/* Action Selection UI */}
-        {!isAnimating && battleState.phase !== 'finished' && player && (
+        {/* ── Forced switch after faint ── */}
+        {waitingForSwitch && (
+          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="space-y-2 mb-4">
+            {battleState.playerTeam.map((p, idx) => {
+              const isFainted = p.currentHp <= 0;
+              if (isFainted) return null;
+              const hpRatio = p.currentHp / p.maxHp;
+              return (
+                <motion.button
+                  key={p.uid}
+                  whileTap={{ scale: 0.97 }}
+                  onClick={() => onSwitch(idx)}
+                  className="w-full flex items-center gap-3 p-3 rounded-xl border border-border/50 bg-card/80 hover:border-secondary/40 transition-colors text-left"
+                >
+                  <img src={p.spriteUrl} alt={p.name} className="w-10 h-10 object-contain" style={{ imageRendering: 'pixelated' }} />
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-bold text-foreground">{p.nickname || p.name}</span>
+                      <span className="text-[10px] text-muted-foreground">Lv.{p.level}</span>
+                    </div>
+                    <div className="h-1.5 rounded-full bg-muted overflow-hidden mt-1">
+                      <div className="h-full rounded-full" style={{
+                        width: `${hpRatio * 100}%`,
+                        background: hpRatio > 0.5 ? 'hsl(var(--heal-green))' : hpRatio > 0.2 ? 'hsl(var(--amber))' : 'hsl(var(--destructive))',
+                      }} />
+                    </div>
+                  </div>
+                  <p className="text-[9px] text-muted-foreground whitespace-nowrap">{p.currentHp}/{p.maxHp}</p>
+                </motion.button>
+              );
+            })}
+          </motion.div>
+        )}
+
+        {/* ── Move selection (normal turn) ── */}
+        {waitingForInput && !waitingForSwitch && player && (
           <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
             {battleState.playerTeam.filter(p => p.currentHp > 0).length > 1 && (
               <div className="flex gap-2 mb-2">
                 <button
                   onClick={() => setShowSwitchPanel(false)}
                   className={`flex-1 py-1.5 rounded-lg text-[11px] font-semibold transition-colors ${!showSwitchPanel ? 'bg-primary/20 text-primary border border-primary/30' : 'bg-muted/50 text-muted-foreground'}`}
-                >
-                  ⚔️ 기술
-                </button>
+                >⚔️ 기술</button>
                 <button
                   onClick={() => setShowSwitchPanel(true)}
                   className={`flex-1 py-1.5 rounded-lg text-[11px] font-semibold transition-colors ${showSwitchPanel ? 'bg-secondary/20 text-secondary border border-secondary/30' : 'bg-muted/50 text-muted-foreground'}`}
-                >
-                  🔄 교체
-                </button>
+                >🔄 교체</button>
               </div>
             )}
 
@@ -294,9 +273,7 @@ export default function BattleFighting({
                           <span className="text-muted-foreground">위력 {move.power}</span>
                           <span className="text-muted-foreground">명중 {move.accuracy}</span>
                         </div>
-                        {effInfo && (
-                          <p className={`text-[9px] font-bold mt-1 ${effInfo.color}`}>{effInfo.label}</p>
-                        )}
+                        {effInfo && <p className={`text-[9px] font-bold mt-1 ${effInfo.color}`}>{effInfo.label}</p>}
                         {move.effect && (
                           <p className="text-[8px] text-accent mt-0.5">
                             {move.effect === 'burn' && '🔥 화상'}
@@ -340,13 +317,10 @@ export default function BattleFighting({
                             {isFainted && <span className="text-[8px] px-1.5 py-0.5 rounded-full bg-destructive/20 text-destructive font-semibold">기절</span>}
                           </div>
                           <div className="h-1.5 rounded-full bg-muted overflow-hidden mt-1">
-                            <div
-                              className="h-full rounded-full transition-all"
-                              style={{
-                                width: `${Math.max(0, hpRatio * 100)}%`,
-                                background: hpRatio > 0.5 ? 'hsl(var(--heal-green))' : hpRatio > 0.2 ? 'hsl(var(--amber))' : 'hsl(var(--destructive))',
-                              }}
-                            />
+                            <div className="h-full rounded-full transition-all" style={{
+                              width: `${Math.max(0, hpRatio * 100)}%`,
+                              background: hpRatio > 0.5 ? 'hsl(var(--heal-green))' : hpRatio > 0.2 ? 'hsl(var(--amber))' : 'hsl(var(--destructive))',
+                            }} />
                           </div>
                           <div className="flex gap-1 mt-1">
                             {p.types.map(t => (
@@ -362,16 +336,6 @@ export default function BattleFighting({
               )}
             </AnimatePresence>
           </motion.div>
-        )}
-
-        {/* Animating indicator */}
-        {isAnimating && (
-          <div className="flex justify-center mb-4">
-            <div className="flex items-center gap-2 px-4 py-2 rounded-full bg-muted/50">
-              <div className="w-2 h-2 rounded-full bg-primary animate-pulse" />
-              <span className="text-[10px] text-muted-foreground">배틀 진행 중...</span>
-            </div>
-          </div>
         )}
       </div>
     </div>

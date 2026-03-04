@@ -214,17 +214,41 @@ export function initTurnBattle(playerTeam: BattlePokemon[], opponentTeam: Battle
   };
 }
 
-/** Choose best move for NPC (AI) */
-function chooseNpcMove(attacker: BattlePokemon, defender: BattlePokemon): BattleMove {
+/** Choose best move for NPC (AI) — difficulty-aware */
+export function chooseNpcMove(
+  attacker: BattlePokemon,
+  defender: BattlePokemon,
+  difficulty: 'easy' | 'medium' | 'hard' | 'elite' = 'medium'
+): BattleMove {
   const moves = attacker.moves.length > 0 ? attacker.moves : getMovesForPokemon(attacker.speciesId);
-  let bestMove = moves[0];
-  let bestDmg = 0;
-  for (const m of moves) {
-    const eff = getEffectiveness(m.type, defender.types);
-    const d = m.power * eff;
-    if (d > bestDmg) { bestDmg = d; bestMove = m; }
+  if (moves.length === 0) return { name: '몸통박치기', type: 'normal', power: 40, accuracy: 100, emoji: '💥', learnLevel: 1, category: 'physical', description: '몸을 부딪쳐 공격한다' };
+
+  const scores = moves.map((move, idx) => {
+    if (move.power === 0) return { idx, score: 0 };
+    const eff = getEffectiveness(move.type, defender.types);
+    if (eff === 0) return { idx, score: -999 };
+    const stab = attacker.types.includes(move.type) ? 1.5 : 1;
+    return { idx, score: move.power * eff * stab * (move.accuracy / 100) };
+  });
+
+  const sorted = [...scores].sort((a, b) => b.score - a.score);
+
+  switch (difficulty) {
+    case 'easy':
+      return moves[Math.floor(Math.random() * moves.length)];
+    case 'medium':
+      return Math.random() < 0.7
+        ? moves[sorted[0].idx]
+        : moves[sorted[Math.floor(Math.random() * sorted.length)].idx];
+    case 'hard':
+      return Math.random() < 0.9
+        ? moves[sorted[0].idx]
+        : moves[sorted[Math.min(1, sorted.length - 1)].idx];
+    case 'elite':
+      return moves[sorted[0].idx];
+    default:
+      return moves[sorted[0].idx];
   }
-  return bestMove;
 }
 
 /** Execute one turn: player uses chosen move, opponent auto-picks. Returns new turn logs for this turn. */
@@ -393,12 +417,17 @@ export function calculateBattleRewards(
   baseCoins *= teamSizeMult;
   baseExp *= teamSizeMult;
 
+  // No-faint bonus
+  if (playerWon) {
+    const noFaint = state.playerTeam.every(p => p.currentHp > 0);
+    if (noFaint) {
+      baseCoins = Math.round(baseCoins * 1.5);
+    }
+  }
+
   let coinsLost = 0;
   if (!playerWon) {
-    const currentCoins = getCoins();
-    const lossRate = Math.min(0.3, 0.1 + avgOpponentLevel * 0.005);
-    coinsLost = Math.round(currentCoins * lossRate);
-    coinsLost = Math.max(5, Math.min(coinsLost, currentCoins));
+    coinsLost = 50; // Fixed penalty (not percentage-based)
     baseCoins = 0;
     baseExp = 0;
   }
@@ -444,6 +473,53 @@ export function simulateBattle(playerTeam: BattlePokemon[], opponentTeam: Battle
   };
 }
 
+// ─── Sequential Battle Helpers (v2 — async/await flow) ───
+
+export function canPokemonAct(pokemon: BattlePokemon): { canAct: boolean; reason: string } {
+  if (pokemon.status === 'freeze' && Math.random() > 0.1) {
+    return { canAct: false, reason: `${pokemon.nickname || pokemon.name}은(는) 얼어서 움직일 수 없다!` };
+  }
+  if (pokemon.status === 'paralyze' && Math.random() < 0.25) {
+    return { canAct: false, reason: `${pokemon.nickname || pokemon.name}은(는) 마비로 움직일 수 없다!` };
+  }
+  return { canAct: true, reason: '' };
+}
+
+export function getSpeedOrder(player: BattlePokemon, opponent: BattlePokemon): 'player' | 'npc' {
+  if (player.speed > opponent.speed) return 'player';
+  if (opponent.speed > player.speed) return 'npc';
+  return Math.random() < 0.5 ? 'player' : 'npc';
+}
+
+export function findNextAlive(team: BattlePokemon[], excludeIdx: number): number {
+  for (let i = 0; i < team.length; i++) {
+    if (i !== excludeIdx && team[i].currentHp > 0) return i;
+  }
+  return -1;
+}
+
+export function advanceNpcPokemon(state: TurnBasedBattleState): { gameOver: boolean; nextName?: string } {
+  const next = findNextAlive(state.opponentTeam, state.opponentIdx);
+  if (next === -1) {
+    state.phase = 'finished';
+    state.winner = 'player';
+    return { gameOver: true };
+  }
+  state.opponentIdx = next;
+  const p = state.opponentTeam[next];
+  return { gameOver: false, nextName: p.nickname || p.name };
+}
+
+export function checkPlayerDefeated(state: TurnBasedBattleState): boolean {
+  const anyAlive = state.playerTeam.some(p => p.currentHp > 0);
+  if (!anyAlive) {
+    state.phase = 'finished';
+    state.winner = 'opponent';
+    return true;
+  }
+  return false;
+}
+
 // ─── Damage Calculation (공식 포켓몬 데미지 공식) ─────────
 
 function calcDamage(
@@ -457,7 +533,7 @@ function calcDamage(
   return Math.max(1, Math.floor(base * effectiveness * stab * critical * random));
 }
 
-function doAttack(attacker: BattlePokemon, defender: BattlePokemon, turn: number, isPlayerAttacking: boolean, chosenMove?: BattleMove): BattleTurnLog {
+export function doAttack(attacker: BattlePokemon, defender: BattlePokemon, turn: number, isPlayerAttacking: boolean, chosenMove?: BattleMove): BattleTurnLog {
   let bestMove: BattleMove;
   if (chosenMove) {
     bestMove = chosenMove;
