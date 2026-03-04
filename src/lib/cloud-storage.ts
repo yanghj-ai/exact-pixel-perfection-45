@@ -389,6 +389,7 @@ export async function initializeCloudCache(userId: string): Promise<void> {
     party,
     eggs,
     seen: colRow?.seen_species_ids || [],
+    pokedex: {},
     coins: colRow?.coins || 0,
     totalHatched: 0,
     totalEncountered: colRow?.encountered_species_ids?.length || 0,
