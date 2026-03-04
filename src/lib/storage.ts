@@ -1,3 +1,5 @@
+import { getCachedProfile, setCachedProfile, isCloudReady } from './cloud-storage';
+
 export interface UserProfile {
   name: string;
   offWorkTime: string;
@@ -24,21 +26,25 @@ const DEFAULT_PROFILE: UserProfile = {
 };
 
 export function getProfile(): UserProfile {
+  // Try cloud cache first
+  if (isCloudReady()) {
+    const cached = getCachedProfile();
+    if (cached) return { ...DEFAULT_PROFILE, ...cached };
+  }
+  // Fallback to localStorage
   const data = localStorage.getItem('routinmon-profile');
   if (data) return { ...DEFAULT_PROFILE, ...JSON.parse(data) };
-  const old = localStorage.getItem('routinit-profile');
-  if (old) {
-    const parsed = { ...DEFAULT_PROFILE, ...JSON.parse(old) };
-    localStorage.setItem('routinmon-profile', JSON.stringify(parsed));
-    localStorage.removeItem('routinit-profile');
-    return parsed;
-  }
   return DEFAULT_PROFILE;
 }
 
-export function saveProfile(profile: Partial<UserProfile>) {
+export function saveProfile(profile: Partial<UserProfile>): UserProfile {
   const current = getProfile();
   const updated = { ...current, ...profile };
+  // Always write to localStorage as fallback
   localStorage.setItem('routinmon-profile', JSON.stringify(updated));
+  // Sync to cloud
+  if (isCloudReady()) {
+    setCachedProfile(updated);
+  }
   return updated;
 }
