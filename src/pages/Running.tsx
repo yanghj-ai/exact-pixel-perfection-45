@@ -9,8 +9,8 @@ import { GpsTracker, type GpsPoint } from '@/lib/gps-tracker';
 import { validateRunSession } from '@/lib/activity-validator';
 import { calculateRunRewards, type RunRewards } from '@/lib/running-rewards';
 import { recordRunForStreak, getRunningStreak, saveRunRecord, type StreakMilestone } from '@/lib/running-streak';
-import { getMoodForSteps, getMoodEmoji, getCheerMessage, type CompanionMood } from '@/lib/pokemon-companion';
-import { updateBondAfterRun, getBondState } from '@/lib/pokemon-bond';
+import { getMoodForSteps, getMoodEmoji as getCompanionMoodEmoji, getCheerMessage, type CompanionMood } from '@/lib/pokemon-companion';
+import { updateBondAfterRun, getBondState, getMoodEmoji as getBondMoodEmoji } from '@/lib/pokemon-bond';
 import { recoverCondition, getConditionState } from '@/lib/pokemon-condition';
 import { triggerEncounter, catchPokemon, markAsSeen, grantExpToParty, getParty, type PartyExpResult } from '@/lib/collection';
 import { getPokemonById } from '@/lib/pokemon-registry';
@@ -630,7 +630,7 @@ export default function RunningPage() {
             )}
             <AnimatePresence mode="wait">
               <motion.div key={milestoneMsg || cheerMessage} initial={{ opacity: 0, y: 5 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className={`glass-card px-3 py-1.5 flex items-center gap-1.5 ${milestoneMsg ? 'border border-primary/30' : ''}`}>
-                <span>{getMoodEmoji(companionMood)}</span>
+                <span>{getCompanionMoodEmoji(companionMood)}</span>
                 <p className="text-xs text-foreground">{milestoneMsg || cheerMessage}</p>
               </motion.div>
             </AnimatePresence>
@@ -650,7 +650,7 @@ export default function RunningPage() {
                 <div className="mb-4"><PetSprite stage={pet.stage} hp={100} maxHp={100} happiness={5} streak={0} /></div>
               )}
               <p className="text-lg font-semibold text-foreground mb-1">
-                {getMoodEmoji(bond.mood)} {leaderSpecies?.name || '포켓몬'}와 함께 달려볼까?
+                {getBondMoodEmoji(bond.mood)} {leaderSpecies?.name || '포켓몬'}와 함께 달려볼까?
               </p>
               <p className="text-sm text-muted-foreground mb-4">걸음수로 컨디션을 올리고 포켓몬을 성장시키세요</p>
 
@@ -692,7 +692,7 @@ export default function RunningPage() {
                   {steps.toLocaleString()}
                 </motion.p>
                 <p className="text-sm text-muted-foreground flex items-center justify-center gap-1">
-                  <Footprints size={14} /> 걸음 {getMoodEmoji(companionMood)}
+                  <Footprints size={14} /> 걸음 {getCompanionMoodEmoji(companionMood)}
                 </p>
               </div>
 
