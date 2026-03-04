@@ -9,6 +9,8 @@ import { GpsTracker, type GpsPoint } from '@/lib/gps-tracker';
 import { validateRunSession } from '@/lib/activity-validator';
 import { calculateRunRewards, type RunRewards } from '@/lib/running-rewards';
 import { recordRunForStreak, getRunningStreak, saveRunRecord, type StreakMilestone } from '@/lib/running-streak';
+import { calculateAutoMultiplier, checkMultiplierMilestone } from '@/lib/auto-multiplier';
+import { getCompanionDialogue, getRunningCheer } from '@/lib/companion-dialogue';
 import { getMoodForSteps, getMoodEmoji as getCompanionMoodEmoji, getCheerMessage, type CompanionMood } from '@/lib/pokemon-companion';
 import { updateBondAfterRun, getBondState, getMoodEmoji as getBondMoodEmoji } from '@/lib/pokemon-bond';
 import { recoverCondition, getConditionState } from '@/lib/pokemon-condition';
@@ -59,16 +61,8 @@ import EncounterPokemonCard from '@/components/running/EncounterPokemonCard';
 type RunState = 'idle' | 'countdown' | 'legendaryIntro' | 'running' | 'paused' | 'completed' | 'legendaryCutscene';
 
 // 목표 유형
-type RunGoalType = 'steps_1000' | 'steps_3000' | 'steps_5000' | 'time_10' | 'time_20' | 'time_30' | 'free';
-const GOAL_CONFIG: Record<RunGoalType, { label: string; emoji: string; bonus: number; target?: number }> = {
-  steps_1000: { label: '1000보', emoji: '👟', bonus: 1.1, target: 1000 },
-  steps_3000: { label: '3000보', emoji: '🏃', bonus: 1.3, target: 3000 },
-  steps_5000: { label: '5000보', emoji: '🏆', bonus: 1.5, target: 5000 },
-  time_10: { label: '10분', emoji: '⏱️', bonus: 1.1, target: 600 },
-  time_20: { label: '20분', emoji: '⏱️', bonus: 1.2, target: 1200 },
-  time_30: { label: '30분', emoji: '⏱️', bonus: 1.3, target: 1800 },
-  free: { label: '자유', emoji: '🌿', bonus: 1.0 },
-};
+// 목표는 자동 배율 시스템으로 대체 (FIX #3)
+// GOAL_CONFIG 및 selectedGoal 제거
 
 export default function RunningPage() {
   const navigate = useNavigate();
@@ -83,8 +77,9 @@ export default function RunningPage() {
   const [gpsAvailable, setGpsAvailable] = useState(true);
   const [pedometerAvailable, setPedometerAvailable] = useState(true);
   const [showMap, setShowMap] = useState(false);
-  const [selectedGoal, setSelectedGoal] = useState<RunGoalType>('free');
   const [amoledMode, setAmoledMode] = useState(false);
+  const [amoledMode, setAmoledMode] = useState(false);
+  const multiplierShownRef = useRef<Set<number>>(new Set());
 
   // Milestone messages during run
   const [milestoneMsg, setMilestoneMsg] = useState<string | null>(null);
@@ -475,21 +470,11 @@ export default function RunningPage() {
     const pace = currentPace;
     const rewards = calculateRunRewards(finalSteps, pace, validation);
 
-    // 목표 달성 보너스
-    const goalCfg = GOAL_CONFIG[selectedGoal];
-    let goalAchieved = false;
-    let goalBonus = 1.0;
-    if (goalCfg.target) {
-      const isStepGoal = selectedGoal.startsWith('steps');
-      goalAchieved = isStepGoal ? finalSteps >= goalCfg.target : finalDuration >= goalCfg.target;
-      if (goalAchieved) goalBonus = goalCfg.bonus;
-    }
-
-    // Apply goal bonus to rewards
-    if (goalBonus > 1) {
-      rewards.exp = Math.floor(rewards.exp * goalBonus);
-      rewards.coins = Math.floor(rewards.coins * goalBonus);
-    }
+    // FIX #3: 자동 배율 계산 (목표 선택 제거)
+    const distKmForMult = Math.round(stepsToKm(finalSteps, true) * 100) / 100;
+    const autoMult = calculateAutoMultiplier(distKmForMult, streak.currentStreak);
+    const goalAchieved = autoMult.exp > 1;
+    const goalBonus = autoMult.exp;
 
     const milestones = recordRunForStreak(finalSteps);
     for (const m of milestones) {
@@ -1012,26 +997,6 @@ export default function RunningPage() {
                 {getBondMoodEmoji(bond.mood)} {leaderSpecies?.name || '포켓몬'}와 함께 달려볼까?
               </p>
               <p className="text-sm text-muted-foreground mb-4">걸음수로 컨디션을 올리고 포켓몬을 성장시키세요</p>
-
-              {/* 목표 선택 */}
-              <div className="mb-4">
-                <p className="text-xs text-muted-foreground mb-2">🎯 목표 설정 (선택사항)</p>
-                <div className="flex gap-1.5 flex-wrap justify-center">
-                  {(Object.entries(GOAL_CONFIG) as [RunGoalType, typeof GOAL_CONFIG[RunGoalType]][]).map(([key, cfg]) => (
-                    <button
-                      key={key}
-                      onClick={() => setSelectedGoal(key as RunGoalType)}
-                      className={`rounded-full px-3 py-1 text-[11px] font-medium transition-all ${
-                        selectedGoal === key
-                          ? 'bg-primary text-primary-foreground'
-                          : 'bg-muted text-muted-foreground hover:text-foreground'
-                      }`}
-                    >
-                      {cfg.emoji} {cfg.label} {cfg.bonus > 1 ? `(×${cfg.bonus})` : ''}
-                    </button>
-                  ))}
-                </div>
-              </div>
 
               {/* Today steps + streak */}
               <div className="flex items-center justify-center gap-4 text-sm">
