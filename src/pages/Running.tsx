@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Play, Pause, Square, Timer, Flame, Navigation, Map, Swords, Footprints } from 'lucide-react';
+import { Play, Pause, Square, Timer, Flame, Navigation, Map, Swords, Footprints, Share2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { formatDuration, formatPace, getRunningStats } from '@/lib/running';
 import { Pedometer, stepsToKm, estimateCaloriesFromSteps, addTodaySteps, getTodaySteps } from '@/lib/pedometer';
@@ -21,7 +21,7 @@ import type { LevelUpResult } from '@/lib/pet';
 import {
   checkLegendaryEncounterConditions,
   checkMissionComplete, getMissionProgress, recordLegendaryCatch,
-  type LegendaryEncounter,
+  type LegendaryEncounter, type LegendaryDefinition,
 } from '@/lib/legendary';
 import {
   createCatchQuest, checkQuestProgress, addActiveQuest, completeQuest, failAllActiveQuests, clearActiveQuests,
@@ -36,6 +36,10 @@ import {
   initMediaSession, cleanupMediaSession, updateLockScreenWidget, updateNotificationBar,
   requestNotificationPermission, showEncounterNotification, showRunEndNotification, clearNotifications,
 } from '@/lib/widget-notification';
+import {
+  LEGENDARY_MISSIONS, checkMilestoneAlerts, getLegendaryMissionProgress,
+  type LegendaryMission,
+} from '@/lib/legendary-story-flow';
 
 import PetSprite from '@/components/PetSprite';
 import BottomNav from '@/components/BottomNav';
@@ -50,8 +54,9 @@ import RunningCountdown from '@/components/running/RunningCountdown';
 import RunningAmoledScreen from '@/components/running/RunningAmoledScreen';
 import LegendaryStoryIntro from '@/components/running/LegendaryStoryIntro';
 import LegendaryCutscene from '@/components/running/LegendaryCutscene';
+import EncounterPokemonCard from '@/components/running/EncounterPokemonCard';
 
-type RunState = 'idle' | 'countdown' | 'running' | 'paused' | 'completed';
+type RunState = 'idle' | 'countdown' | 'legendaryIntro' | 'running' | 'paused' | 'completed' | 'legendaryCutscene';
 
 // 목표 유형
 type RunGoalType = 'steps_1000' | 'steps_3000' | 'steps_5000' | 'time_10' | 'time_20' | 'time_30' | 'free';
@@ -118,6 +123,12 @@ export default function RunningPage() {
   // Auto-collect (실시간 자동 수집)
   const autoCollectRef = useRef<AutoCollectState>(createAutoCollectState());
   const [autoCollected, setAutoCollected] = useState<AutoCollectResult[]>([]);
+
+  // Legendary story flow
+  const [legendaryStoryDef, setLegendaryStoryDef] = useState<LegendaryDefinition | null>(null);
+  const [legendaryStoryMission, setLegendaryStoryMission] = useState<LegendaryMission | null>(null);
+  const [legendaryStoryComplete, setLegendaryStoryComplete] = useState(false);
+  const legendaryMilestoneShownRef = useRef<Set<number>>(new Set());
 
   // Refs
   const pedometerRef = useRef<Pedometer | null>(null);
@@ -192,64 +203,36 @@ export default function RunningPage() {
     return () => clearInterval(id);
   }, [runState]);
 
-  // 위젯 + 알림바 업데이트 (10초마다)
+  // 위젯 + 알림바 업데이트 (10초마다) — 전설 미션 진행도 포함
   useEffect(() => {
     if (runState !== 'running') return;
     const id = setInterval(() => {
+      const dist = stepsToKm(stepsRef.current, true);
+      const pace = gpsTrackerRef.current?.getCurrentPace() ?? null;
+      const isLegMission = !!legendaryStoryMission;
       updateLockScreenWidget({
-        distanceKm: stepsToKm(stepsRef.current, true),
-        pace: gpsTrackerRef.current?.getCurrentPace() ?? null,
+        distanceKm: dist,
+        pace,
         encounterCount: autoCollectRef.current.encounters.length,
         companionName: leaderSpecies?.name || '포켓몬',
         companionImageUrl: leaderSpecies?.spriteUrl,
+        isLegendaryMission: isLegMission,
+        legendaryName: legendaryStoryMission?.pokemonName,
+        legendaryTargetKm: legendaryStoryMission?.targetKm,
       });
       updateNotificationBar({
-        distanceKm: stepsToKm(stepsRef.current, true),
-        pace: gpsTrackerRef.current?.getCurrentPace() ?? null,
+        distanceKm: dist,
+        pace,
         encounterCount: autoCollectRef.current.encounters.length,
       });
     }, 10000);
     return () => clearInterval(id);
-  }, [runState, leaderSpecies]);
+  }, [runState, leaderSpecies, legendaryStoryMission]);
 
   const currentDistance = stepDistance;
 
-  // Legendary encounter check
-  useEffect(() => {
-    if (runState === 'running' && !legendaryCheckedRef.current) {
-      legendaryCheckedRef.current = true;
-      const availableLegendaries = checkLegendaryEncounterConditions();
-      if (availableLegendaries.length > 0) {
-        const def = availableLegendaries[0];
-        // 스토리 메시지 표시
-        toast(`🌟 ${def.name} 조우!`, { description: def.storyIntro, duration: 8000 });
-        
-        if (def.autoCatch) {
-          // 뮤: 자동 포획
-          catchPokemon(def.speciesId);
-          recordLegendaryCatch(def.speciesId);
-          setSpecialOverlay({ show: true, speciesId: def.speciesId, type: 'legendary' });
-          toast(`✨ ${def.storyOutro}`, { duration: 8000 });
-        } else {
-          setLegendaryEncounter({ definition: def, mission: def.mission, startedAt: Date.now(), missionActive: true });
-        }
-      }
-    }
-  }, [runState]);
-
-  // Legendary mission progress
-  useEffect(() => {
-    if (!legendaryEncounter || !legendaryEncounter.missionActive || legendaryCaught) return;
-    const pace = currentPace ?? 0;
-    setLegendaryMissionProgress(getMissionProgress(legendaryEncounter.mission, currentDistance, elapsed, pace));
-    if (checkMissionComplete(legendaryEncounter.mission, currentDistance, elapsed, pace)) {
-      setLegendaryCaught(true);
-      catchPokemon(legendaryEncounter.definition.speciesId);
-      recordLegendaryCatch(legendaryEncounter.definition.speciesId);
-      setSpecialOverlay({ show: true, speciesId: legendaryEncounter.definition.speciesId, type: 'legendary' });
-      toast(`🌟 ${legendaryEncounter.definition.storyOutro}`, { duration: 8000 });
-    }
-  }, [legendaryEncounter, currentDistance, elapsed, legendaryCaught, currentPace]);
+  // Legendary encounter check — now handled by handleStart story flow
+  // Old in-run legendary check removed; legendary missions use the 3-stage flow
 
   // Wild encounter - now handled at run completion via processEncounters
 
@@ -320,6 +303,32 @@ export default function RunningPage() {
     }
   }, [runState, currentDistance, currentPace, gpsPoints.length]);
 
+  // Legendary story mission milestone alerts (파이어 2/5/8km, 뮤츠 5km)
+  useEffect(() => {
+    if (runState !== 'running' || !legendaryStoryMission) return;
+    const alert = checkMilestoneAlerts(legendaryStoryMission, currentDistance, legendaryMilestoneShownRef.current);
+    if (alert) {
+      toast(`🔥 ${legendaryStoryMission.pokemonName}`, {
+        description: alert.message,
+        duration: 5000,
+      });
+      if ('vibrate' in navigator) navigator.vibrate([300, 100, 300]);
+    }
+  }, [runState, currentDistance, legendaryStoryMission]);
+
+  // Legendary story mission complete check
+  useEffect(() => {
+    if (runState !== 'running' || !legendaryStoryDef || !legendaryStoryMission || legendaryStoryComplete) return;
+    const distOk = currentDistance >= legendaryStoryMission.targetKm;
+    const paceOk = !legendaryStoryMission.targetPace || (currentPace && currentPace > 0 && currentPace <= legendaryStoryMission.targetPace);
+    if (distOk && paceOk) {
+      setLegendaryStoryComplete(true);
+      catchPokemon(legendaryStoryDef.speciesId);
+      recordLegendaryCatch(legendaryStoryDef.speciesId);
+      toast(`🌟 ${legendaryStoryDef.name} 미션 완료!`, { duration: 5000 });
+    }
+  }, [runState, currentDistance, currentPace, legendaryStoryDef, legendaryStoryMission, legendaryStoryComplete]);
+
   const handleBattleNpc = () => {
     if (!npcEncounter) return;
     sessionStorage.setItem('routinmon-ai-npc', JSON.stringify(npcEncounter));
@@ -345,10 +354,46 @@ export default function RunningPage() {
     setMilestoneMsg(null);
     autoCollectRef.current = createAutoCollectState();
     setAutoCollected([]);
+    legendaryMilestoneShownRef.current.clear();
+    setLegendaryStoryComplete(false);
 
-    // 카운트다운 시작
+    // 전설 포켓몬 스토리 체크
+    const availableLegendaries = checkLegendaryEncounterConditions();
+    if (availableLegendaries.length > 0) {
+      const def = availableLegendaries[0];
+      if (def.autoCatch) {
+        // 뮤: 자동 포획 (러닝 없이)
+        catchPokemon(def.speciesId);
+        recordLegendaryCatch(def.speciesId);
+        setLegendaryStoryDef(def);
+        setRunState('legendaryCutscene');
+        return;
+      }
+      const mission = LEGENDARY_MISSIONS[def.speciesId];
+      if (mission) {
+        setLegendaryStoryDef(def);
+        setLegendaryStoryMission(mission);
+        setRunState('legendaryIntro');
+        return;
+      }
+    }
+
+    // 일반 러닝 카운트다운
+    setLegendaryStoryDef(null);
+    setLegendaryStoryMission(null);
     setRunState('countdown');
   };
+
+  const handleLegendaryIntroStart = useCallback(() => {
+    // 인트로 → 카운트다운 → 러닝
+    setRunState('countdown');
+  }, []);
+
+  const handleLegendaryIntroCancel = useCallback(() => {
+    setLegendaryStoryDef(null);
+    setLegendaryStoryMission(null);
+    setRunState('idle');
+  }, []);
 
   const handleCountdownComplete = useCallback(async () => {
     // Wake Lock + 전체화면
@@ -375,10 +420,12 @@ export default function RunningPage() {
 
     setAmoledMode(true);
     setRunState('running');
-    toast('🏃 런닝 시작!', {
-      description: `${leaderSpecies?.name || '포켓몬'}와 함께 출발! ${!pedometerRef.current ? '(GPS 모드)' : ''}`,
+
+    const missionName = legendaryStoryMission?.pokemonName;
+    toast(missionName ? `🌟 ${missionName} 미션 시작!` : '🏃 런닝 시작!', {
+      description: `${leaderSpecies?.name || '포켓몬'}와 함께 출발!`,
     });
-  }, [leaderSpecies]);
+  }, [leaderSpecies, legendaryStoryMission]);
 
   const handlePause = () => {
     setRunState('paused');
@@ -560,8 +607,18 @@ export default function RunningPage() {
     // 종료 알림
     showRunEndNotification(distKm, spawnResults.length);
     clearNotifications();
-    setRunState('completed');
+
+    // 전설 미션 성공 시 컷신으로 전환
+    if (legendaryStoryDef && legendaryStoryComplete) {
+      setRunState('legendaryCutscene');
+    } else {
+      setRunState('completed');
+    }
   };
+
+  const handleLegendaryCutsceneComplete = useCallback(() => {
+    setRunState('completed');
+  }, []);
 
   useEffect(() => {
     return () => {
@@ -574,6 +631,27 @@ export default function RunningPage() {
       clearNotifications();
     };
   }, []);
+
+  // ─── Legendary Story Intro Screen ──────────────────────
+  if (runState === 'legendaryIntro' && legendaryStoryDef) {
+    return (
+      <LegendaryStoryIntro
+        definition={legendaryStoryDef}
+        onStart={handleLegendaryIntroStart}
+        onCancel={handleLegendaryIntroCancel}
+      />
+    );
+  }
+
+  // ─── Legendary Cutscene Screen ─────────────────────────
+  if (runState === 'legendaryCutscene' && legendaryStoryDef) {
+    return (
+      <LegendaryCutscene
+        definition={legendaryStoryDef}
+        onComplete={handleLegendaryCutsceneComplete}
+      />
+    );
+  }
 
   // ─── Countdown Screen ──────────────────────────────────
   if (runState === 'countdown') {
@@ -713,8 +791,20 @@ export default function RunningPage() {
             </motion.div>
           )}
 
-          {/* Spawned Pokemon */}
-          {completedData.spawnResults.length > 0 && (
+          {/* Spawned Pokemon — Enhanced Cards */}
+          {autoCollected.length > 0 && (
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 1.1 }} className="glass-card p-4 mb-4 border border-primary/20">
+              <p className="text-xs text-muted-foreground mb-3">🎊 포획한 포켓몬 ({autoCollected.length}마리)</p>
+              <div className="space-y-2">
+                {autoCollected.map((enc, i) => (
+                  <EncounterPokemonCard key={`${enc.speciesId}-${i}`} encounter={enc} index={i} />
+                ))}
+              </div>
+            </motion.div>
+          )}
+
+          {/* Extra spawn results (non-auto-collected) */}
+          {completedData.spawnResults.length > 0 && autoCollected.length === 0 && (
             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 1.1 }} className="glass-card p-4 mb-4 border border-primary/20">
               <p className="text-xs text-muted-foreground mb-2">🎊 포획한 포켓몬</p>
               <div className="space-y-2">
@@ -792,13 +882,44 @@ export default function RunningPage() {
             </motion.div>
           )}
 
-          <motion.button
-            whileTap={{ scale: 0.95 }}
-            onClick={() => navigate('/home')}
-            className="w-full gradient-primary text-primary-foreground rounded-2xl py-4 font-bold text-lg mt-4"
-          >
-            홈으로 돌아가기
-          </motion.button>
+          {/* Legendary mission special card */}
+          {legendaryStoryDef && legendaryStoryComplete && (
+            <motion.div
+              initial={{ opacity: 0, scale: 0.9 }}
+              animate={{ opacity: 1, scale: 1 }}
+              transition={{ delay: 1.5, type: 'spring' }}
+              className="glass-card p-4 mb-4 border-2 border-primary/40 text-center"
+            >
+              <span className="text-3xl">{legendaryStoryDef.emoji}</span>
+              <p className="text-sm font-bold text-primary mt-1">{legendaryStoryDef.name} 합류!</p>
+              <p className="text-[10px] text-muted-foreground mt-0.5">{legendaryStoryDef.storyOutro}</p>
+            </motion.div>
+          )}
+
+          {/* Share + Home buttons */}
+          <div className="flex gap-3 mt-4">
+            <motion.button
+              whileTap={{ scale: 0.95 }}
+              onClick={() => {
+                const text = `오늘 ${completedData.distanceKm.toFixed(1)}km 달리면서 ${autoCollected.length || completedData.spawnResults.length}마리 포켓몬을 만났습니다! #루틴몬`;
+                if (navigator.share) {
+                  navigator.share({ title: '루틴몬 런닝 기록', text }).catch(() => {});
+                } else {
+                  navigator.clipboard.writeText(text).then(() => toast('클립보드에 복사됨!')).catch(() => {});
+                }
+              }}
+              className="flex-1 flex items-center justify-center gap-2 rounded-2xl border border-border py-3 font-medium text-sm text-foreground"
+            >
+              <Share2 size={16} /> 공유하기
+            </motion.button>
+            <motion.button
+              whileTap={{ scale: 0.95 }}
+              onClick={() => navigate('/home')}
+              className="flex-[2] gradient-primary text-primary-foreground rounded-2xl py-3 font-bold text-lg"
+            >
+              홈으로 돌아가기
+            </motion.button>
+          </div>
         </div>
         <BottomNav />
         <LevelUpOverlay result={completedData.levelUpResult} pet={getPet()} onClose={() => setCompletedData(prev => prev ? { ...prev, levelUpResult: null } : null)} />
@@ -822,6 +943,9 @@ export default function RunningPage() {
           onPause={handlePause}
           onResume={handleResume}
           onStop={handleStop}
+          legendaryMissionName={legendaryStoryMission?.pokemonName}
+          legendaryMissionTargetKm={legendaryStoryMission?.targetKm}
+          legendaryMissionProgress={legendaryStoryMission ? getLegendaryMissionProgress(legendaryStoryMission, currentDistance) : undefined}
         />
       )}
       <div className="mx-auto max-w-md px-5 pt-8">
