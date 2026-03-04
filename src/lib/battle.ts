@@ -8,6 +8,7 @@ import { getPokemonById, type PokemonType, type PokemonSpecies } from './pokemon
 import { type OwnedPokemon, getCoins } from './collection';
 import { getMovesForLevel, type BattleMove } from './battle-moves';
 import { getEffectiveHpRatio } from './pokemon-health';
+import { getCachedBattleRecords, setCachedBattleRecords, syncBattleRecordToDB, isCloudReady } from './cloud-storage';
 
 // Re-export BattleMove for convenience
 export type { BattleMove } from './battle-moves';
@@ -581,6 +582,10 @@ export interface BattleRecord {
 }
 
 export function getBattleRecords(): BattleRecord[] {
+  if (isCloudReady()) {
+    const cached = getCachedBattleRecords();
+    if (cached) return cached;
+  }
   const data = localStorage.getItem(BATTLE_STORAGE);
   return data ? JSON.parse(data) : [];
 }
@@ -590,6 +595,10 @@ export function saveBattleRecord(record: BattleRecord) {
   records.unshift(record);
   if (records.length > 50) records.length = 50;
   localStorage.setItem(BATTLE_STORAGE, JSON.stringify(records));
+  if (isCloudReady()) {
+    setCachedBattleRecords(records);
+    syncBattleRecordToDB(record);
+  }
 }
 
 export function getWeeklyBattleStats() {

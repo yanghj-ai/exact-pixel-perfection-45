@@ -4,15 +4,20 @@
 // ═══════════════════════════════════════════════════════════
 
 const HEALTH_STORAGE = 'routinmon-pokemon-health';
-const HEAL_TIME_MINUTES = 30; // 30분 후 자연 회복
+const HEAL_TIME_MINUTES = 30;
+
+import { getCachedHealthState, setCachedHealthState, isCloudReady } from './cloud-storage';
 
 export interface PokemonHealthState {
-  /** uid → { currentHp ratio (0-1), injuredAt ISO } */
   injuries: Record<string, { hpRatio: number; injuredAt: string }>;
-  lastHealAllAt: string | null; // ISO - last Pokemon Center visit
+  lastHealAllAt: string | null;
 }
 
 function getState(): PokemonHealthState {
+  if (isCloudReady()) {
+    const cached = getCachedHealthState();
+    if (cached) return cached;
+  }
   const data = localStorage.getItem(HEALTH_STORAGE);
   if (data) return JSON.parse(data);
   return { injuries: {}, lastHealAllAt: null };
@@ -20,6 +25,9 @@ function getState(): PokemonHealthState {
 
 function saveState(state: PokemonHealthState) {
   localStorage.setItem(HEALTH_STORAGE, JSON.stringify(state));
+  if (isCloudReady()) {
+    setCachedHealthState(state);
+  }
 }
 
 /**

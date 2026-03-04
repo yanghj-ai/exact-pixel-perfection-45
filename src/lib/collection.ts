@@ -3,7 +3,7 @@
 // ═══════════════════════════════════════════════════════════
 
 import { getPokemonById, getPokemonByRarity, type Rarity, type PokemonSpecies } from './pokemon-registry';
-import { getCachedCollection, setCachedCollection, syncOwnedPokemonToDB, syncEggsToDB, isCloudReady } from './cloud-storage';
+import { getCachedCollection, setCachedCollection, setCachedPet, syncOwnedPokemonToDB, syncEggsToDB, isCloudReady } from './cloud-storage';
 
 // ─── Types ───────────────────────────────────────────────
 
@@ -222,13 +222,16 @@ export function feedPokemon(uid: string, foodCount: number): { pokemon: OwnedPok
   pokemon.friendship = Math.min(255, pokemon.friendship + 5);
   saveCollection(col);
 
-  // Also consume food from pet state (direct localStorage to avoid circular import)
+  // Consume food from pet state via localStorage + cloud cache
   const petData = localStorage.getItem('routinmon-pet');
   if (petData) {
     const pet = JSON.parse(petData);
     if (pet.foodCount > 0) {
       pet.foodCount = pet.foodCount - 1;
       localStorage.setItem('routinmon-pet', JSON.stringify(pet));
+      if (isCloudReady()) {
+        setCachedPet(pet);
+      }
     }
   }
 

@@ -5,6 +5,7 @@
 import { getRunningStats, type Challenge } from './running';
 import { getOwnedSpeciesIds, getCollectionStats } from './collection';
 import { getProfile } from './storage';
+import { getCachedLegendaryState, setCachedLegendaryState, isCloudReady } from './cloud-storage';
 
 // ─── Types ───────────────────────────────────────────────
 
@@ -190,10 +191,13 @@ interface LegendaryState {
 }
 
 function getLegendaryState(): LegendaryState {
+  if (isCloudReady()) {
+    const cached = getCachedLegendaryState();
+    if (cached) return { weeklyGoalStreakCount: 0, ...cached };
+  }
   const data = localStorage.getItem(STORAGE_KEY);
   if (data) {
     const parsed = JSON.parse(data);
-    // Migration: old format used hotspot ids as strings
     if (parsed.caught && parsed.caught.length > 0 && typeof parsed.caught[0] === 'string') {
       parsed.caught = [];
     }
@@ -204,6 +208,9 @@ function getLegendaryState(): LegendaryState {
 
 function saveLegendaryState(state: LegendaryState) {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  if (isCloudReady()) {
+    setCachedLegendaryState(state);
+  }
 }
 
 // ─── Encounter Condition Checks ─────────────────────────
