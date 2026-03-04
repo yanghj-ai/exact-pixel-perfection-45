@@ -3,7 +3,8 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { getAllPokemon, getPokemonById, getEvolutionChain, RARITY_CONFIG, TYPE_CONFIG, type PokemonSpecies, type PokemonType } from '@/lib/pokemon-registry';
 import { getOwnedSpeciesIds, getSeenSpeciesIds, getCollection, getFriendshipLevel } from '@/lib/collection';
 import { getAllLearnableMoves } from '@/lib/battle-moves';
-import { Search, ChevronRight, ArrowLeft, X, Swords } from 'lucide-react';
+import { getAllLegendaryDefs, getAllSpecialEvents } from '@/lib/legendary';
+import { Search, ChevronRight, ArrowLeft, X, Swords, Sparkles } from 'lucide-react';
 import BottomNav from '@/components/BottomNav';
 import DebugPanel from '@/components/DebugPanel';
 import { useNavigate } from 'react-router-dom';
@@ -355,14 +356,55 @@ export default function Pokedex() {
                          </div>
                        )}
 
-                       {/* Unknown */}
-                       {!seen && !owned && (
-                         <div className="text-center py-4">
-                           <span className="text-3xl mb-2 block">🔒</span>
-                           <p className="text-sm text-muted-foreground">아직 발견하지 못한 포켓몬</p>
-                           <p className="text-xs text-muted-foreground/70 mt-1">배틀이나 런닝에서 만나보세요!</p>
-                         </div>
-                       )}
+                       {/* Unknown — show hint for legendary/event */}
+                       {!seen && !owned && (() => {
+                         const legendaryDefs = getAllLegendaryDefs();
+                         const specialEvents = getAllSpecialEvents();
+                         const legendaryDef = legendaryDefs.find(d => d.speciesId === selectedPokemon.id);
+                         const specialEvent = specialEvents.find(e => e.speciesId === selectedPokemon.id);
+
+                         if (legendaryDef) {
+                           return (
+                             <div className="text-center py-4 space-y-2">
+                               <span className="text-3xl mb-2 block">🌟</span>
+                               <p className="text-sm font-semibold text-foreground">전설의 포켓몬</p>
+                               <div className="glass-card p-3 text-left">
+                                 <div className="flex items-center gap-1.5 mb-1">
+                                   <Sparkles size={12} className="text-secondary" />
+                                   <span className="text-[10px] font-bold text-secondary">조우 조건</span>
+                                 </div>
+                                 <p className="text-xs text-muted-foreground">{legendaryDef.encounterCondition}</p>
+                               </div>
+                               <p className="text-xs text-muted-foreground/70 italic mt-2">💬 "{legendaryDef.encounterHint}"</p>
+                             </div>
+                           );
+                         }
+
+                         if (specialEvent) {
+                           return (
+                             <div className="text-center py-4 space-y-2">
+                               <span className="text-3xl mb-2 block">{specialEvent.emoji}</span>
+                               <p className="text-sm font-semibold text-foreground">특수 이벤트 포켓몬</p>
+                               <div className="glass-card p-3 text-left">
+                                 <div className="flex items-center gap-1.5 mb-1">
+                                   <Sparkles size={12} className="text-accent" />
+                                   <span className="text-[10px] font-bold text-accent">조우 조건</span>
+                                 </div>
+                                 <p className="text-xs text-muted-foreground">{specialEvent.description}</p>
+                               </div>
+                               <p className="text-xs text-muted-foreground/70 italic mt-2">💬 "{specialEvent.hint}"</p>
+                             </div>
+                           );
+                         }
+
+                         return (
+                           <div className="text-center py-4">
+                             <span className="text-3xl mb-2 block">🔒</span>
+                             <p className="text-sm text-muted-foreground">아직 발견하지 못한 포켓몬</p>
+                             <p className="text-xs text-muted-foreground/70 mt-1">배틀이나 런닝에서 만나보세요!</p>
+                           </div>
+                         );
+                       })()}
 
                        {/* Learnable Moves */}
                        {(owned || seen) && (() => {

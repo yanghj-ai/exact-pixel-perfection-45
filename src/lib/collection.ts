@@ -382,21 +382,23 @@ export function grantExpToParty(totalExp: number): PartyExpResult[] {
 
 // ─── Encounter System (during running) ──────────────────
 
+/** Returns encountered species with rarity (no legendary — those use legendary.ts) */
 export function triggerEncounter(distanceKm: number): PokemonSpecies | null {
   // 30% chance per km over 1km
   const chance = Math.min(0.8, distanceKm * 0.15);
   if (Math.random() > chance) return null;
 
-  // Rarity roll
+  // Rarity roll (no legendary here)
   const roll = Math.random();
   let rarity: Rarity;
-  if (roll < 0.01) rarity = 'legendary';
-  else if (roll < 0.05) rarity = 'epic';
+  if (roll < 0.05) rarity = 'epic';
   else if (roll < 0.15) rarity = 'rare';
   else if (roll < 0.45) rarity = 'uncommon';
   else rarity = 'common';
 
-  const candidates = getPokemonByRarity(rarity).filter(p => p.evolveFrom === null);
+  // Exclude legendary/special event species
+  const EXCLUDED_IDS = new Set([131, 132, 133, 143, 144, 145, 146, 150, 151]);
+  const candidates = getPokemonByRarity(rarity).filter(p => p.evolveFrom === null && !EXCLUDED_IDS.has(p.id));
   if (candidates.length === 0) return null;
   return candidates[Math.floor(Math.random() * candidates.length)];
 }
