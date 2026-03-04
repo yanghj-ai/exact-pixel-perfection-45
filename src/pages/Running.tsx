@@ -29,6 +29,7 @@ import {
 } from '@/lib/catch-quest';
 import { shouldEncounterNpc, generateAiNpc, resetEncounterDistance, type AiNpcTrainer } from '@/lib/npc-encounter';
 import { addCoins } from '@/lib/collection';
+import { updateChallengesAfterRun, type ChallengeUpdateResult, type ChallengeDefinition } from '@/lib/challenge';
 
 import PetSprite from '@/components/PetSprite';
 import BottomNav from '@/components/BottomNav';
@@ -88,7 +89,8 @@ export default function RunningPage() {
     friendshipGain: number;
     goalAchieved: boolean;
     goalBonus: number;
-    spawnResults: SpawnResult[];
+      spawnResults: SpawnResult[];
+      challengeResults: ChallengeUpdateResult | null;
   } | null>(null);
 
   // Encounters
@@ -394,6 +396,25 @@ export default function RunningPage() {
       });
     }
 
+    // 챌린지 업데이트
+    const challengeResults = updateChallengesAfterRun({
+      distanceKm: distKm,
+      paceMinPerKm: pace ?? 0,
+      regionId: region?.id,
+      hour: new Date().getHours(),
+    });
+
+    if (challengeResults.totalCoinsEarned > 0) {
+      addCoins(challengeResults.totalCoinsEarned);
+    }
+
+    for (const ch of challengeResults.newlyCompleted) {
+      toast(`🏅 챌린지 달성: ${ch.emoji} ${ch.name}!`, {
+        description: `코인 +${ch.rewardCoins}${ch.rewardTitle ? ` | 칭호: ${ch.rewardTitle}` : ''}`,
+        duration: 5000,
+      });
+    }
+
     // 기록 저장
     saveRunRecord({
       date: new Date().toISOString().split('T')[0],
@@ -429,6 +450,7 @@ export default function RunningPage() {
       goalAchieved,
       goalBonus,
       spawnResults,
+      challengeResults: challengeResults.newlyCompleted.length > 0 ? challengeResults : null,
     });
 
     setRunState('completed');
@@ -616,6 +638,36 @@ export default function RunningPage() {
                     </div>
                   ) : null;
                 })}
+              </div>
+            </motion.div>
+          )}
+
+          {/* Challenge Achievements */}
+          {completedData.challengeResults && completedData.challengeResults.newlyCompleted.length > 0 && (
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 1.3 }} className="glass-card p-4 mb-4 border border-accent/20">
+              <p className="text-xs text-muted-foreground mb-2">🏅 챌린지 달성</p>
+              <div className="space-y-2">
+                {completedData.challengeResults.newlyCompleted.map((ch, i) => (
+                  <motion.div
+                    key={ch.id}
+                    initial={{ opacity: 0, x: -20 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    transition={{ delay: 1.4 + i * 0.15 }}
+                    className="flex items-center justify-between"
+                  >
+                    <div className="flex items-center gap-2">
+                      <span className="text-base">{ch.emoji}</span>
+                      <div>
+                        <span className="text-xs font-medium text-foreground">{ch.name}</span>
+                        <p className="text-[10px] text-muted-foreground">{ch.description}</p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-1.5 text-[10px]">
+                      <span className="text-secondary font-bold">+{ch.rewardCoins} 🪙</span>
+                      {ch.rewardTitle && <span className="px-1 py-0.5 rounded bg-accent/15 text-accent font-bold">🏷️ {ch.rewardTitle}</span>}
+                    </div>
+                  </motion.div>
+                ))}
               </div>
             </motion.div>
           )}
