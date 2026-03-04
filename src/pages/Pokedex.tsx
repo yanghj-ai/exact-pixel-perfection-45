@@ -4,7 +4,9 @@ import { getAllPokemon, getPokemonById, getEvolutionChain, RARITY_CONFIG, TYPE_C
 import { getOwnedSpeciesIds, getSeenSpeciesIds, getCollection, getFriendshipLevel } from '@/lib/collection';
 import { getAllLearnableMoves } from '@/lib/battle-moves';
 import { getAllLegendaryDefs, getAllSpecialEvents } from '@/lib/legendary';
-import { Search, ChevronRight, ArrowLeft, X, Swords, Sparkles } from 'lucide-react';
+import { getGradeInfo, type PokemonGrade } from '@/lib/pokemon-grade';
+import { getPokemonGrade, getGradeForPokemon } from '@/lib/spawn-data';
+import { Search, ChevronRight, ArrowLeft, X, Swords, Sparkles, MapPin } from 'lucide-react';
 import BottomNav from '@/components/BottomNav';
 import DebugPanel from '@/components/DebugPanel';
 import { useNavigate } from 'react-router-dom';
@@ -35,6 +37,7 @@ export default function Pokedex() {
   const [search, setSearch] = useState('');
   const [filterMode, setFilterMode] = useState<FilterMode>('all');
   const [selectedType, setSelectedType] = useState<PokemonType | null>(null);
+  const [selectedGrade, setSelectedGrade] = useState<PokemonGrade | null>(null);
   const [selectedPokemon, setSelectedPokemon] = useState<PokemonSpecies | null>(null);
 
   const ownedIds = getOwnedSpeciesIds();
@@ -53,8 +56,9 @@ export default function Pokedex() {
     if (filterMode === 'seen') list = list.filter(p => seenIds.has(p.id) && !ownedIds.has(p.id));
     if (filterMode === 'missing') list = list.filter(p => !seenIds.has(p.id));
     if (selectedType) list = list.filter(p => p.types.includes(selectedType));
+    if (selectedGrade) list = list.filter(p => getGradeForPokemon(p.id) === selectedGrade);
     return list;
-  }, [search, filterMode, selectedType, allPokemon, ownedIds, seenIds]);
+  }, [search, filterMode, selectedType, selectedGrade, allPokemon, ownedIds, seenIds]);
 
   const ownedOfSpecies = (speciesId: number) => collection.owned.filter(p => p.speciesId === speciesId);
   const completionPct = Math.round((ownedIds.size / 151) * 100);
@@ -131,6 +135,27 @@ export default function Pokedex() {
             ))}
           </div>
 
+          {/* Grade filter */}
+          <div className="flex gap-1.5 mb-3">
+            {(['normal', 'rare', 'unique', 'legendary'] as PokemonGrade[]).map(g => {
+              const info = getGradeInfo(g);
+              const count = allPokemon.filter(p => getGradeForPokemon(p.id) === g).length;
+              return (
+                <button
+                  key={g}
+                  onClick={() => setSelectedGrade(selectedGrade === g ? null : g)}
+                  className={`rounded-full px-3 py-1.5 text-[11px] font-medium transition-all ${
+                    selectedGrade === g
+                      ? 'bg-primary text-primary-foreground shadow-md'
+                      : 'bg-card border border-border text-muted-foreground hover:text-foreground'
+                  }`}
+                >
+                  {info.emoji} {info.label} ({count})
+                </button>
+              );
+            })}
+          </div>
+
           {/* Type filter scroll */}
           <div className="flex gap-1.5 overflow-x-auto pb-2 scrollbar-none -mx-1 px-1">
             {selectedType && (
@@ -165,6 +190,7 @@ export default function Pokedex() {
               const owned = ownedIds.has(pokemon.id);
               const seen = seenIds.has(pokemon.id);
               const rarityConf = RARITY_CONFIG[pokemon.rarity];
+              const gradeInfo = getGradeInfo(getGradeForPokemon(pokemon.id));
               return (
                 <motion.button
                   key={pokemon.id}
@@ -183,11 +209,10 @@ export default function Pokedex() {
                     #{String(pokemon.id).padStart(3, '0')}
                   </span>
 
-                  {/* Status indicator */}
-                  <span className={`absolute top-1.5 right-2 w-2 h-2 rounded-full ${
-                    owned ? `${rarityConf.bgColor} border ${pokemon.rarity === 'legendary' ? 'animate-pulse border-amber-400' : pokemon.rarity === 'epic' ? 'border-purple-400' : 'border-transparent'}`
-                    : seen ? 'bg-accent/60 border border-accent/40' : ''
-                  }`} />
+                  {/* Grade indicator */}
+                  <span className="absolute top-1.5 right-2 text-[9px]" title={gradeInfo.label}>
+                    {gradeInfo.emoji}
+                  </span>
 
                   {/* Sprite */}
                   <div className="w-14 h-14 flex items-center justify-center mt-2">
@@ -304,6 +329,14 @@ export default function Pokedex() {
                               {rarityConf.emoji} {rarityConf.label}
                             </span>
                           )}
+                          {(() => {
+                            const gi = getGradeInfo(getGradeForPokemon(selectedPokemon.id));
+                            return (
+                              <span className="bg-white/20 text-white text-[10px] px-2.5 py-0.5 rounded-full font-medium">
+                                {gi.emoji} {gi.label}
+                              </span>
+                            );
+                          })()}
                         </div>
                       )}
                     </div>
@@ -347,13 +380,72 @@ export default function Pokedex() {
                          </p>
                        )}
 
+                       {/* Encounter Condition / Grade Info */}
+                       {(owned || seen) && (() => {
+                         const gradeEntry = getPokemonGrade(selectedPokemon.id);
+                         if (!gradeEntry) return null;
+                         const gi = getGradeInfo(gradeEntry.grade);
+                         const cond = gradeEntry.wildCondition;
+                         return (
+                           <div className="glass-card p-3">
+                             <div className="flex items-center gap-1.5 mb-2">
+                               <MapPin size={12} className="text-primary" />
+                               <p className="text-[10px] text-muted-foreground font-semibold">조우 조건</p>
+                               <span className="ml-auto text-[10px] font-bold" style={{ color: gi.color }}>
+                                 {gi.emoji} {gi.label} 등급
+                               </span>
+                             </div>
+                             {cond ? (
+                               <div className="space-y-1">
+                                 {cond.minDistanceKm != null && (
+                                   <div className="flex items-center gap-2 text-[11px] text-foreground">
+                                     <span>🏃</span>
+                                     <span>최소 거리: <strong>{cond.minDistanceKm}km</strong></span>
+                                   </div>
+                                 )}
+                                 {cond.maxPaceMinPerKm != null && (
+                                   <div className="flex items-center gap-2 text-[11px] text-foreground">
+                                     <span>⏱️</span>
+                                     <span>최대 페이스: <strong>{cond.maxPaceMinPerKm}분/km</strong></span>
+                                   </div>
+                                 )}
+                                 {cond.minStreakDays != null && (
+                                   <div className="flex items-center gap-2 text-[11px] text-foreground">
+                                     <span>🔥</span>
+                                     <span>연속 러닝: <strong>{cond.minStreakDays}일</strong></span>
+                                   </div>
+                                 )}
+                                 {cond.minTotalKm != null && (
+                                   <div className="flex items-center gap-2 text-[11px] text-foreground">
+                                     <span>📏</span>
+                                     <span>누적 거리: <strong>{cond.minTotalKm}km</strong></span>
+                                   </div>
+                                 )}
+                                 {cond.timeWindow && (
+                                   <div className="flex items-center gap-2 text-[11px] text-foreground">
+                                     <span>🌙</span>
+                                     <span>시간대: <strong>{cond.timeWindow[0]}시~{cond.timeWindow[1]}시</strong></span>
+                                   </div>
+                                 )}
+                               </div>
+                             ) : (
+                               <p className="text-[11px] text-muted-foreground">
+                                 {gradeEntry.evolveMethod
+                                   ? `🔄 ${gradeEntry.evolveMethod}`
+                                   : '야생에서 만날 수 없음'}
+                               </p>
+                             )}
+                           </div>
+                         );
+                       })()}
+
                        {/* Seen but not owned badge */}
                        {seen && !owned && (
                          <div className="text-center">
-                           <span className="inline-flex items-center gap-1.5 bg-accent/10 text-accent text-xs px-3 py-1.5 rounded-full font-medium">
-                             👁 배틀에서 조우 — 포획하면 더 많은 정보 확인 가능
-                           </span>
-                         </div>
+                            <span className="inline-flex items-center gap-1.5 bg-accent/10 text-accent text-xs px-3 py-1.5 rounded-full font-medium">
+                              👁 배틀에서 조우 — 포획하면 더 많은 정보 확인 가능
+                            </span>
+                          </div>
                        )}
 
                        {/* Unknown — show hint for legendary/event */}
