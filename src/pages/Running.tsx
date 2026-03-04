@@ -408,9 +408,18 @@ export default function RunningPage() {
       addCoins(challengeResults.totalCoinsEarned);
     }
 
+    // 특수 아이템 보상 지급
+    if (challengeResults.specialItems.length > 0) {
+      import('@/lib/shop').then(({ addItemToInventory }) => {
+        for (const itemId of challengeResults.specialItems) {
+          addItemToInventory(itemId, 1);
+        }
+      });
+    }
+
     for (const ch of challengeResults.newlyCompleted) {
       toast(`🏅 챌린지 달성: ${ch.emoji} ${ch.name}!`, {
-        description: `코인 +${ch.rewardCoins}${ch.rewardTitle ? ` | 칭호: ${ch.rewardTitle}` : ''}`,
+        description: `코인 +${ch.rewardCoins}${ch.rewardTitle ? ` | 칭호: ${ch.rewardTitle}` : ''}${ch.rewardItemId ? ' | 🧬 특수 아이템 획득!' : ''}`,
         duration: 5000,
       });
     }

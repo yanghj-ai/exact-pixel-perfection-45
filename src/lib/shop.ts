@@ -105,6 +105,13 @@ function saveInventory(inv: Inventory) {
   }
 }
 
+/** 아이템을 인벤토리에 직접 추가 (챌린지 보상 등) */
+export function addItemToInventory(itemId: string, count: number = 1) {
+  const inv = getInventory();
+  inv.items[itemId] = (inv.items[itemId] || 0) + count;
+  saveInventory(inv);
+}
+
 // ─── Coin Earning (러닝 기반) ────────────────────────────
 
 /** 러닝 완료 시 코인 보상 계산 */
