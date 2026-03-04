@@ -52,6 +52,7 @@ export default function PetCard({ pet, leadPokemon, leadSpecies, dialogue, mood,
           <span className="text-sm">{getMoodEmoji(mood)}</span>
         </div>
         <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
+          <span className="px-1 py-0.5 rounded bg-secondary/15 text-secondary font-bold">🤝 EXP x1.5</span>
           <span>💕</span>
           <span>{friendship}/255</span>
         </div>
