@@ -13,6 +13,7 @@ import {
 import { getNpcById, type NpcTrainer } from '@/lib/npc-trainers';
 import { grantRewards } from '@/lib/pet';
 import { applyBattleDamage, canBattle, getInjuredCount } from '@/lib/pokemon-health';
+import { onSkillUsed, findMoveKey, getSkillLevelLabel } from '@/lib/skill-system';
 
 import BattleSelect from '@/components/battle/BattleSelect';
 import BattleIntro from '@/components/battle/BattleIntro';
@@ -158,6 +159,19 @@ export default function BattlePage() {
     const log = doAttack(attacker, defender, state.turnCount, side === 'player', move);
     state.turns.push(log);
     setAllTurnLogs(prev => [...prev, log]);
+
+    // Track skill usage for player moves
+    if (side === 'player') {
+      const moveKey = findMoveKey(move);
+      const result = onSkillUsed(attacker.uid, moveKey);
+      if (result.leveledUp) {
+        const lvLabel = getSkillLevelLabel(result.newLevel);
+        toast.success(`${move.emoji} ${move.name} 스킬 레벨 UP!`, {
+          description: `${lvLabel.emoji} ${lvLabel.label} 달성! 위력/명중 보너스 증가`,
+          duration: 3000,
+        });
+      }
+    }
 
     if (log.missed) {
       await showMessage('공격이 빗나갔다!');
