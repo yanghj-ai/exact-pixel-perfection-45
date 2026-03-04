@@ -1,6 +1,7 @@
 import { grantRewards } from './pet';
 import { addDistanceToEggs, grantExpToParty, type PartyExpResult } from './collection';
 import type { LevelUpResult } from './pet';
+import { getCachedRunningStats, setCachedRunningStats, syncRunningSessionToDB, isCloudReady } from './cloud-storage';
 
 // ─── Types ───────────────────────────────────────────────
 
@@ -104,15 +105,26 @@ function getMonthEnd(): string {
 }
 
 export function getRunningStats(): RunningStats {
+  if (isCloudReady()) {
+    const cached = getCachedRunningStats();
+    if (cached) {
+      const stats = { ...getDefaultStats(), ...cached };
+      stats.goals = refreshGoals(stats);
+      stats.challenges = mergeDefaultChallenges(stats.challenges);
+      return stats;
+    }
+  }
   const data = localStorage.getItem(STORAGE_KEY);
   if (data) {
     const parsed = JSON.parse(data) as RunningStats;
-    // Ensure goals exist and are current
     parsed.goals = refreshGoals(parsed);
-    // Ensure all challenges exist
     parsed.challenges = mergeDefaultChallenges(parsed.challenges);
     return parsed;
   }
+  return getDefaultStats();
+}
+
+function getDefaultStats(): RunningStats {
   return {
     totalDistanceKm: 0,
     totalSessions: 0,
@@ -128,6 +140,9 @@ export function getRunningStats(): RunningStats {
 
 function saveRunningStats(stats: RunningStats) {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(stats));
+  if (isCloudReady()) {
+    setCachedRunningStats(stats);
+  }
 }
 
 function mergeDefaultChallenges(existing: Challenge[]): Challenge[] {
@@ -296,6 +311,7 @@ export function completeRunningSession(
   }
   
   saveRunningStats(stats);
+  if (isCloudReady()) syncRunningSessionToDB(session);
   
   // Hatch eggs with distance
   const hatchedEggs = addDistanceToEggs(distanceKm);

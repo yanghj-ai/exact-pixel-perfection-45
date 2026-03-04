@@ -2,9 +2,10 @@
 // 코인 샵 시스템 — 진화의 돌, 레어캔디 등 아이템
 // ═══════════════════════════════════════════════════════════
 
-import { getCollection, markAsSeen, type CollectionState } from './collection';
+import { getCollection, addCoins, markAsSeen, type CollectionState } from './collection';
 import { getPet, savePet, type PetState } from './pet';
 import { getPokemonById } from './pokemon-registry';
+import { getCachedInventory, setCachedInventory, setCachedCollection, syncOwnedPokemonToDB, isCloudReady } from './cloud-storage';
 
 // ─── Item definitions ────────────────────────────────────
 
@@ -129,12 +130,19 @@ export interface Inventory {
 }
 
 export function getInventory(): Inventory {
+  if (isCloudReady()) {
+    const cached = getCachedInventory();
+    if (cached) return cached;
+  }
   const data = localStorage.getItem(INVENTORY_KEY);
   return data ? JSON.parse(data) : { items: {} };
 }
 
 function saveInventory(inv: Inventory) {
   localStorage.setItem(INVENTORY_KEY, JSON.stringify(inv));
+  if (isCloudReady()) {
+    setCachedInventory(inv);
+  }
 }
 
 // ─── Purchase ────────────────────────────────────────────
@@ -149,8 +157,7 @@ export function purchaseItem(itemId: string): { success: boolean; message: strin
   }
 
   // Deduct coins
-  col.coins -= item.price;
-  localStorage.setItem('routinmon-collection', JSON.stringify(col));
+  addCoins(-item.price);
 
   // Apply effect immediately for consumables, or add to inventory
   if (item.effect === 'food_3' || item.effect === 'food_10') {
@@ -193,6 +200,10 @@ export function useRareCandy(pokemonUid: string, amount: number = 1): { success:
   }
 
   localStorage.setItem('routinmon-collection', JSON.stringify(col));
+  if (isCloudReady()) {
+    setCachedCollection(col);
+    syncOwnedPokemonToDB(col.owned);
+  }
 
   inv.items[itemId] = count - 1;
   if (inv.items[itemId] <= 0) delete inv.items[itemId];
@@ -283,6 +294,10 @@ export function useEvolutionStone(pokemonUid: string, stoneItemId: string): { su
   // Auto-register evolved species in pokedex
   markAsSeen([evolvedId]);
   localStorage.setItem('routinmon-collection', JSON.stringify(col));
+  if (isCloudReady()) {
+    setCachedCollection(col);
+    syncOwnedPokemonToDB(col.owned);
+  }
 
   inv.items[stoneItemId] = count - 1;
   if (inv.items[stoneItemId] <= 0) delete inv.items[stoneItemId];

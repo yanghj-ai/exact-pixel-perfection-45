@@ -134,6 +134,8 @@ export function checkQuestProgress(
 
 const STORAGE_KEY = 'routinmon-catch-quests';
 
+import { getCachedCatchQuestState, setCachedCatchQuestState, isCloudReady } from './cloud-storage';
+
 interface CatchQuestState {
   activeQuests: CatchQuest[];
   completedCount: number;
@@ -141,12 +143,19 @@ interface CatchQuestState {
 }
 
 function getQuestState(): CatchQuestState {
+  if (isCloudReady()) {
+    const cached = getCachedCatchQuestState();
+    if (cached) return cached as CatchQuestState;
+  }
   const data = localStorage.getItem(STORAGE_KEY);
   return data ? JSON.parse(data) : { activeQuests: [], completedCount: 0, failedCount: 0 };
 }
 
 function saveQuestState(state: CatchQuestState) {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  if (isCloudReady()) {
+    setCachedCatchQuestState(state);
+  }
 }
 
 export function addActiveQuest(quest: CatchQuest) {
