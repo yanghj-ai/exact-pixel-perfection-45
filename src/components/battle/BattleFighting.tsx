@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { type BattleMove } from '@/lib/battle-moves';
 import { type TurnBasedBattleState, getEffectiveness } from '@/lib/battle';
 import { type NpcTrainer } from '@/lib/npc-trainers';
+import { getSkillState, getSkillLevelLabel, getEffectiveMove, findMoveKey } from '@/lib/skill-system';
 import BattleMessageBox from './BattleMessageBox';
 
 export type SpriteAnim = 'idle' | 'attacking' | 'hit' | 'fainting' | 'entering' | 'fainted';
@@ -255,6 +256,10 @@ export default function BattleFighting({
                   {playerMoves.map((move, i) => {
                     const effInfo = getEffLabel(move);
                     const typeColor = TYPE_COLORS[move.type] || TYPE_COLORS.normal;
+                    const moveKey = findMoveKey(move);
+                    const skillState = getSkillState(player.uid, moveKey);
+                    const skillLabel = getSkillLevelLabel(skillState.skillLevel);
+                    const effective = getEffectiveMove(move, player.uid);
                     return (
                       <motion.button
                         key={move.name}
@@ -268,10 +273,21 @@ export default function BattleFighting({
                         <div className="flex items-center gap-1.5 mb-1">
                           <span className="text-sm">{move.emoji}</span>
                           <span className="text-xs font-bold text-foreground">{move.name}</span>
+                          {skillState.skillLevel > 1 && (
+                            <span className={`text-[8px] px-1.5 py-0.5 rounded-full bg-black/20 font-bold ${skillLabel.color}`}>
+                              {skillLabel.emoji}{skillLabel.label}
+                            </span>
+                          )}
                         </div>
                         <div className="flex items-center gap-2 text-[9px]">
-                          <span className="text-muted-foreground">위력 {move.power}</span>
-                          <span className="text-muted-foreground">명중 {move.accuracy}</span>
+                          <span className="text-muted-foreground">
+                            위력 {effective.power}
+                            {effective.power > move.power && <span className="text-accent ml-0.5">(+{effective.power - move.power})</span>}
+                          </span>
+                          <span className="text-muted-foreground">
+                            명중 {effective.accuracy}
+                            {effective.accuracy > move.accuracy && <span className="text-accent ml-0.5">(+{effective.accuracy - move.accuracy})</span>}
+                          </span>
                         </div>
                         {effInfo && <p className={`text-[9px] font-bold mt-1 ${effInfo.color}`}>{effInfo.label}</p>}
                         {move.effect && (
