@@ -5,6 +5,7 @@ import { saveProfile } from '@/lib/storage';
 import { savePet } from '@/lib/pet';
 import { upsertStarter, markAsSeen } from '@/lib/collection';
 import { ChevronRight, Clock } from 'lucide-react';
+import professorOakImg from '@/assets/professor-oak.png';
 
 const SPRITE_BASE = 'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/versions/generation-v/black-white/animated';
 
@@ -129,14 +130,14 @@ export default function Onboarding() {
           transition={{ duration: 1 }}
           className="text-center"
         >
-          <motion.div
+          <motion.img
+            src={professorOakImg}
+            alt="오박사"
             initial={{ scale: 0 }}
             animate={{ scale: 1 }}
             transition={{ delay: 0.3, type: 'spring', stiffness: 200 }}
-            className="text-8xl mb-4"
-          >
-            👨‍🔬
-          </motion.div>
+            className="w-40 h-40 object-contain mx-auto mb-4"
+          />
           <motion.p
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
@@ -156,13 +157,13 @@ export default function Onboarding() {
       <div className="min-h-screen bg-background flex flex-col items-center justify-center px-6" onClick={() => { handleTap(); if (canTap && !isTyping) advanceDialog(); }}>
         <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="text-center max-w-sm w-full">
           {/* Oak sprite */}
-          <motion.div
-            className="text-7xl mb-8"
+          <motion.img
+            src={professorOakImg}
+            alt="오박사"
+            className="w-32 h-32 object-contain mx-auto mb-8"
             animate={{ y: [0, -6, 0] }}
             transition={{ duration: 3, repeat: Infinity }}
-          >
-            👨‍🔬
-          </motion.div>
+          />
 
           {/* Lab bg elements */}
           {phase === 'oak-lab' && (
@@ -211,7 +212,7 @@ export default function Onboarding() {
     return (
       <div className="min-h-screen bg-background flex flex-col items-center justify-center px-6">
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="text-center max-w-sm w-full">
-          <div className="text-6xl mb-4">👨‍🔬</div>
+          <img src={professorOakImg} alt="오박사" className="w-24 h-24 object-contain mx-auto mb-4" />
           <div className="glass-card p-5 text-left mb-6">
             <p className="text-xs text-primary font-bold mb-1.5">오박사</p>
             <p className="text-sm text-foreground leading-relaxed">
@@ -247,7 +248,7 @@ export default function Onboarding() {
     return (
       <div className="min-h-screen bg-background flex flex-col items-center justify-center px-6">
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="text-center max-w-sm w-full">
-          <div className="text-6xl mb-4">👨‍🔬</div>
+          <img src={professorOakImg} alt="오박사" className="w-24 h-24 object-contain mx-auto mb-4" />
           <div className="glass-card p-5 text-left mb-6">
             <p className="text-xs text-primary font-bold mb-1.5">오박사</p>
             <p className="text-sm text-foreground leading-relaxed">
@@ -283,7 +284,7 @@ export default function Onboarding() {
       <div className="min-h-screen bg-background flex flex-col items-center justify-center px-6">
         <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="max-w-sm w-full">
           <div className="text-center mb-4">
-            <div className="text-5xl mb-3">👨‍🔬</div>
+            <img src={professorOakImg} alt="오박사" className="w-20 h-20 object-contain mx-auto mb-3" />
             <div className="glass-card p-4 text-left mb-5">
               <p className="text-xs text-primary font-bold mb-1.5">오박사</p>
               <p className="text-sm text-foreground leading-relaxed">
