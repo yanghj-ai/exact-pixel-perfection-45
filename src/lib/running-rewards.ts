@@ -1,6 +1,6 @@
 // ═══════════════════════════════════════════════════════════
-// 러닝 보상 체계 — 걸음수 기반
-// 모든 보상은 걸음수 기준. GPS 거리로 보상 계산 금지.
+// 러닝 보상 체계 — 걸음수 기반 (v4)
+// berries/food 제거 → conditionRecovery + friendshipGain
 // ═══════════════════════════════════════════════════════════
 
 import type { ValidationResult } from './activity-validator';
@@ -9,8 +9,8 @@ import { getRunningStreak } from './running-streak';
 export interface RunRewards {
   exp: number;
   coins: number;
-  berries: number;       // 먹이 (food)
-  friendship: number;
+  conditionRecovery: number;
+  friendshipGain: number;
   bonusMultiplier: number;
   paceBonus: number;
   streakBonus: number;
@@ -34,14 +34,19 @@ export function calculateRunRewards(
 
   // 스트릭 보너스 (최대 2.0배)
   const streakBonus = Math.min(2.0, 1.0 + streakDays * 0.1);
-
   const totalBonus = paceBonus * streakBonus * mult;
+
+  // 컨디션 회복: +1 per 100 steps (최대 50)
+  const conditionRecovery = Math.min(50, Math.floor(steps / 100));
+
+  // 친밀도 획득: 500보당 +5 (최대 100)
+  const friendshipGain = Math.min(100, Math.floor(steps / 500) * 5);
 
   return {
     exp: Math.floor(steps * 0.1 * totalBonus),
     coins: Math.floor(steps * 0.005 * totalBonus),
-    berries: Math.min(20, Math.floor(steps / 500)),
-    friendship: Math.floor(steps * 0.02),
+    conditionRecovery,
+    friendshipGain,
     bonusMultiplier: totalBonus,
     paceBonus,
     streakBonus,

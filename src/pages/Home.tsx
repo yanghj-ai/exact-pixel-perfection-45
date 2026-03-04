@@ -1,26 +1,26 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { AnimatePresence } from 'framer-motion';
 import { getProfile } from '@/lib/storage';
-import { getPet, applyHpDecay, feedPet, getRandomDialogue } from '@/lib/pet';
+import { getPet, grantRewards } from '@/lib/pet';
 import type { PetState, LevelUpResult } from '@/lib/pet';
 import { checkAndGrantAttendance } from '@/lib/attendance';
 import { getRunningStats, type RunningStats } from '@/lib/running';
 import { getCollection, getCollectionStats, getParty, syncStarterWithPet } from '@/lib/collection';
 import { getPokemonById } from '@/lib/pokemon-registry';
+import { getBondState, getMoodDialogue, type PokemonMood } from '@/lib/pokemon-bond';
+import { getConditionState, getConditionLevel, getConditionEmoji, getConditionLabel } from '@/lib/pokemon-condition';
+import { getRunningStreak } from '@/lib/running-streak';
+import { getTodaySteps } from '@/lib/pedometer';
 import { toast } from 'sonner';
 import BottomNav from '@/components/BottomNav';
 import LevelUpOverlay from '@/components/LevelUpOverlay';
 import AttendanceBonus from '@/components/AttendanceBonus';
 import DebugPanel from '@/components/DebugPanel';
-import EggHatchOverlay from '@/components/EggHatchOverlay';
-import type { PokemonEgg } from '@/lib/collection';
 
 // Sub-components
 import PetCard from '@/components/home/PetCard';
 import PartyPreview from '@/components/home/PartyPreview';
 import QuickActions from '@/components/home/QuickActions';
-import EggsList from '@/components/home/EggsList';
 import RunningGoals from '@/components/home/RunningGoals';
 import CollectionStatsCard from '@/components/home/CollectionStatsCard';
 import HealingCenter from '@/components/home/HealingCenter';
@@ -30,19 +30,22 @@ export default function Home() {
   const [profile] = useState(getProfile());
   const [pet, setPet] = useState<PetState>(getPet());
   const [dialogue, setDialogue] = useState('');
-  const [runStats, setRunStats] = useState<RunningStats>(getRunningStats());
+  const [runStats] = useState<RunningStats>(getRunningStats());
   const [, forceUpdate] = useState(0);
   const refresh = () => forceUpdate(v => v + 1);
 
   const collectionStats = getCollectionStats();
   const party = getParty();
-  const collection = getCollection();
+  const bond = getBondState();
+  const condition = getConditionState();
+  const condLevel = getConditionLevel(condition.condition);
+  const streak = getRunningStreak();
+  const todaySteps = getTodaySteps();
 
   // Overlays
   const [levelUpResult, setLevelUpResult] = useState<LevelUpResult | null>(null);
   const [showAttendance, setShowAttendance] = useState(false);
   const [attendanceData, setAttendanceData] = useState<{ consecutiveDays: number; bonusFood: number; bonusExp: number } | null>(null);
-  const [hatchedEggs, setHatchedEggs] = useState<PokemonEgg[]>([]);
 
   useEffect(() => {
     if (!profile.onboardingComplete) {
@@ -50,9 +53,8 @@ export default function Home() {
       return;
     }
     syncStarterWithPet(pet.level, pet.stage, pet.name);
-    const updated = applyHpDecay(pet);
-    setPet(updated);
-    setDialogue(getRandomDialogue(updated.hp <= 0 ? 'hungry' : 'idle'));
+    // Set initial dialogue based on mood
+    setDialogue(getMoodDialogue(bond.mood));
 
     const attendance = checkAndGrantAttendance();
     if (attendance.isNewDay) {
@@ -67,25 +69,10 @@ export default function Home() {
     }
   }, []);
 
-  const handleFeed = useCallback(() => {
-    if (pet.foodCount <= 0) {
-      toast('먹이가 없어요!', { description: '런닝을 완료하면 먹이를 얻을 수 있어요 🍎' });
-      return;
-    }
-    const updated = feedPet(pet);
-    if (updated) {
-      setPet(updated);
-      setDialogue(getRandomDialogue('fed'));
-      toast('🍎 먹이를 줬어요!', { description: `HP +20 회복! (남은 먹이: ${updated.foodCount}개)` });
-    }
-  }, [pet]);
-
   const handleAttendanceClose = useCallback(() => setShowAttendance(false), []);
 
   const leadPokemon = party[0];
   const leadSpecies = leadPokemon ? getPokemonById(leadPokemon.speciesId) : undefined;
-  const dailyGoal = runStats.goals.find(g => g.type === 'daily');
-  const weeklyGoal = runStats.goals.find(g => g.type === 'weekly');
 
   return (
     <div className="min-h-screen pb-24">
@@ -100,10 +87,12 @@ export default function Home() {
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <div className="flex items-center gap-1.5 rounded-full bg-primary/10 px-3 py-1">
-              <span className="text-xs">🍎</span>
-              <span className="text-xs font-bold text-primary">{pet.foodCount}</span>
-            </div>
+            {streak.currentStreak > 0 && (
+              <div className="flex items-center gap-1.5 rounded-full bg-destructive/10 px-3 py-1">
+                <span className="text-xs">🔥</span>
+                <span className="text-xs font-bold text-destructive">{streak.currentStreak}일</span>
+              </div>
+            )}
             <div className="flex items-center gap-1.5 rounded-full bg-accent/10 px-3 py-1">
               <span className="text-xs">💰</span>
               <span className="text-xs font-bold text-accent">{collectionStats.coins}</span>
@@ -116,21 +105,24 @@ export default function Home() {
           leadPokemon={leadPokemon}
           leadSpecies={leadSpecies}
           dialogue={dialogue}
-          runStats={runStats}
+          mood={bond.mood}
+          condition={condition.condition}
+          conditionLevel={condLevel}
+          friendship={bond.friendship}
           onDialogueChange={setDialogue}
-          onFeed={handleFeed}
         />
 
         <PartyPreview party={party} />
-        <QuickActions onFeed={handleFeed} />
-        <EggsList eggs={collection.eggs} />
-        <RunningGoals dailyGoal={dailyGoal} weeklyGoal={weeklyGoal} />
+        <QuickActions condition={condition.condition} conditionLevel={condLevel} />
+
+        {/* 오늘 걸음수 + 스트릭 위젯 */}
+        <RunningGoals todaySteps={todaySteps} streak={streak} />
+
         <CollectionStatsCard uniqueSpecies={collectionStats.uniqueSpecies} completionRate={collectionStats.completionRate} runStats={runStats} />
         <HealingCenter party={party} onRefresh={refresh} />
 
         <DebugPanel
-          onRefresh={() => { setPet(getPet()); setRunStats(getRunningStats()); }}
-          onEggHatch={(eggs) => setHatchedEggs(eggs)}
+          onRefresh={() => { setPet(getPet()); }}
         />
       </div>
 
@@ -139,14 +131,6 @@ export default function Home() {
       {attendanceData && (
         <AttendanceBonus show={showAttendance} consecutiveDays={attendanceData.consecutiveDays} bonusFood={attendanceData.bonusFood} bonusExp={attendanceData.bonusExp} onClose={handleAttendanceClose} />
       )}
-      <AnimatePresence>
-        {hatchedEggs.length > 0 && (
-          <EggHatchOverlay
-            hatchedEggs={hatchedEggs}
-            onComplete={() => { setHatchedEggs([]); setPet(getPet()); setRunStats(getRunningStats()); }}
-          />
-        )}
-      </AnimatePresence>
     </div>
   );
 }
