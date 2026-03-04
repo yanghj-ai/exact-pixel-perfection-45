@@ -17,10 +17,14 @@ import { getPokemonById, RARITY_CONFIG } from '@/lib/pokemon-registry';
 import { getPet, getRequiredExp } from '@/lib/pet';
 import type { LevelUpResult } from '@/lib/pet';
 import {
-  checkLegendaryProximity, getMissionForSpecies, checkMissionComplete,
-  getMissionProgress, recordLegendaryCatch, getNearbyHotspots,
-  type LegendaryEncounter, type LegendaryHotspot, type CatchMission,
+  checkLegendaryEncounterConditions, checkSpecialEventConditions,
+  checkMissionComplete, getMissionProgress, recordLegendaryCatch, recordSpecialEventCatch,
+  type LegendaryEncounter, type LegendaryDefinition, type SpecialEvent,
 } from '@/lib/legendary';
+import {
+  createCatchQuest, checkQuestProgress, addActiveQuest, completeQuest, failAllActiveQuests, clearActiveQuests,
+  type CatchQuest, type QuestProgress,
+} from '@/lib/catch-quest';
 import {
   shouldEncounterNpc, generateAiNpc, resetEncounterDistance,
   type AiNpcTrainer,
@@ -32,6 +36,8 @@ import LevelUpOverlay from '@/components/LevelUpOverlay';
 import RunningMap from '@/components/RunningMap';
 import DebugPanel from '@/components/DebugPanel';
 import EggHatchOverlay from '@/components/EggHatchOverlay';
+import CatchQuestBanner from '@/components/CatchQuestBanner';
+import SpecialEncounterOverlay from '@/components/SpecialEncounterOverlay';
 
 type RunState = 'idle' | 'running' | 'paused' | 'completed';
 
@@ -62,8 +68,12 @@ export default function RunningPage() {
   const [legendaryEncounter, setLegendaryEncounter] = useState<LegendaryEncounter | null>(null);
   const [legendaryMissionProgress, setLegendaryMissionProgress] = useState(0);
   const [legendaryCaught, setLegendaryCaught] = useState(false);
-  const [nearbyHotspots, setNearbyHotspots] = useState<(LegendaryHotspot & { distanceKm: number; caught: boolean })[]>([]);
   const legendaryCheckedRef = useRef(false);
+
+  // Catch quest state
+  const [activeQuests, setActiveQuests] = useState<{ quest: CatchQuest; progress: QuestProgress }[]>([]);
+  const lastEncounterDistRef = useRef(0);
+  const [specialOverlay, setSpecialOverlay] = useState<{ show: boolean; speciesId: number | null; type: 'legendary' | 'event' | 'catch' }>({ show: false, speciesId: null, type: 'catch' });
 
   // NPC encounter state
   const [npcEncounter, setNpcEncounter] = useState<AiNpcTrainer | null>(null);
@@ -80,7 +90,7 @@ export default function RunningPage() {
   const partyLeader = getParty()[0];
   const leaderSpecies = partyLeader ? getPokemonById(partyLeader.speciesId) : null;
 
-  // Timer - keep ref in sync
+  // Timer
   useEffect(() => {
     if (runState === 'running') {
       timerRef.current = setInterval(() => {
@@ -126,28 +136,10 @@ export default function RunningPage() {
         setRoute([...routeRef.current]);
         const dist = calculateDistance(routeRef.current);
         setCurrentDistance(dist);
-        // Use elapsed timer (accounts for pauses) for pace
         if (dist > 0 && elapsedRef.current > 0) {
           const elapsedMin = elapsedRef.current / 60;
           setCurrentPace(elapsedMin / dist);
         }
-
-        // Check legendary hotspot proximity
-        if (!legendaryCheckedRef.current) {
-          const hotspot = checkLegendaryProximity(pos.coords.latitude, pos.coords.longitude);
-          if (hotspot) {
-            legendaryCheckedRef.current = true;
-            const mission = getMissionForSpecies(hotspot.speciesId);
-            setLegendaryEncounter({ hotspot, mission, startedAt: Date.now(), missionActive: true });
-            toast(`🌟 전설의 포켓몬 ${hotspot.name} 발견!`, {
-              description: mission.description,
-              duration: 6000,
-            });
-          }
-        }
-
-        // Update nearby hotspots for idle display
-        setNearbyHotspots(getNearbyHotspots(pos.coords.latitude, pos.coords.longitude));
       },
       (err) => {
         setGpsError(`GPS 오류: ${err.message}`);
@@ -163,6 +155,38 @@ export default function RunningPage() {
     }
   }, []);
 
+  // Check legendary encounter on run start
+  useEffect(() => {
+    if (runState === 'running' && !legendaryCheckedRef.current) {
+      legendaryCheckedRef.current = true;
+
+      // Check legendary conditions
+      const availableLegendaries = checkLegendaryEncounterConditions();
+      if (availableLegendaries.length > 0) {
+        const def = availableLegendaries[0];
+        setLegendaryEncounter({ definition: def, mission: def.mission, startedAt: Date.now(), missionActive: true });
+        toast(`🌟 전설의 포켓몬 ${def.name} 조우!`, {
+          description: def.mission.description,
+          duration: 6000,
+        });
+      }
+
+      // Check special events
+      const availableEvents = checkSpecialEventConditions();
+      for (const event of availableEvents) {
+        // Auto-catch special event Pokémon (no mission required)
+        catchPokemon(event.speciesId);
+        recordSpecialEventCatch(event.speciesId);
+        setSpecialOverlay({ show: true, speciesId: event.speciesId, type: 'event' });
+        toast(`✨ ${event.name}이(가) 나타났다!`, {
+          description: event.description,
+          duration: 6000,
+        });
+        break; // One at a time
+      }
+    }
+  }, [runState]);
+
   // Legendary mission progress check
   useEffect(() => {
     if (!legendaryEncounter || !legendaryEncounter.missionActive || legendaryCaught) return;
@@ -171,22 +195,68 @@ export default function RunningPage() {
     setLegendaryMissionProgress(progress);
 
     if (checkMissionComplete(legendaryEncounter.mission, currentDistance, elapsed, pace)) {
-      // Mission complete — catch the legendary!
       setLegendaryCaught(true);
-      catchPokemon(legendaryEncounter.hotspot.speciesId);
-      recordLegendaryCatch(legendaryEncounter.hotspot.id);
-      toast(`🌟 ${legendaryEncounter.hotspot.name}을(를) 포획했다!`, {
+      catchPokemon(legendaryEncounter.definition.speciesId);
+      recordLegendaryCatch(legendaryEncounter.definition.speciesId);
+      setSpecialOverlay({ show: true, speciesId: legendaryEncounter.definition.speciesId, type: 'legendary' });
+      toast(`🌟 ${legendaryEncounter.definition.name}을(를) 포획했다!`, {
         description: '전설의 포켓몬이 동료가 되었습니다!',
         duration: 8000,
       });
     }
   }, [legendaryEncounter, currentDistance, elapsed, legendaryCaught]);
 
-  // NPC encounter check during running
+  // Wild encounter + catch quest system
+  useEffect(() => {
+    if (runState !== 'running') return;
+    const distSinceLast = currentDistance - lastEncounterDistRef.current;
+    if (distSinceLast < 0.8) return;
+
+    const encounter = triggerEncounter(currentDistance);
+    if (encounter) {
+      lastEncounterDistRef.current = currentDistance;
+      const quest = createCatchQuest(encounter.id, encounter.name, encounter.rarity, currentDistance);
+      addActiveQuest(quest);
+      markAsSeen([encounter.id]);
+
+      const pace = currentDistance > 0 && elapsed > 0 ? (elapsed / 60) / currentDistance : 0;
+      const progress = checkQuestProgress(quest, currentDistance, elapsed, pace);
+      setActiveQuests(prev => [...prev, { quest, progress }]);
+
+      toast(`🔴 야생의 ${encounter.name} 발견!`, {
+        description: quest.requirements.map(r => r.label).join(' + '),
+        duration: 4000,
+      });
+    }
+  }, [runState, currentDistance, elapsed]);
+
+  // Update catch quest progress
+  useEffect(() => {
+    if (activeQuests.length === 0) return;
+    const pace = currentDistance > 0 && elapsed > 0 ? (elapsed / 60) / currentDistance : 0;
+
+    const updated = activeQuests.map(({ quest, progress: _old }) => {
+      if (quest.completed) return { quest, progress: _old };
+      const newProgress = checkQuestProgress(quest, currentDistance, elapsed, pace);
+
+      if (newProgress.allMet && !quest.completed) {
+        quest.completed = true;
+        completeQuest(quest.id);
+        catchPokemon(quest.speciesId);
+        toast(`✨ ${quest.speciesName} 포획 성공!`, { duration: 4000 });
+      }
+
+      return { quest, progress: newProgress };
+    });
+
+    // Only update if something changed
+    const hasChange = updated.some((u, i) => u.progress.overall !== activeQuests[i]?.progress.overall || u.quest.completed !== activeQuests[i]?.quest.completed);
+    if (hasChange) setActiveQuests(updated);
+  }, [currentDistance, elapsed]);
+
+  // NPC encounter check
   useEffect(() => {
     if (runState !== 'running' || isGeneratingNpc || npcEncounter) return;
-    
-    // Check every 0.3km of progress
     if (currentDistance - lastNpcCheckDistRef.current < 0.3) return;
     lastNpcCheckDistRef.current = currentDistance;
 
@@ -194,7 +264,6 @@ export default function RunningPage() {
       setIsGeneratingNpc(true);
       generateAiNpc(currentDistance).then(npc => {
         if (npc) {
-          // Mark NPC's pokemon as seen
           markAsSeen(npc.teamSpeciesIds);
           setNpcEncounter(npc);
           toast(`⚔️ ${npc.emoji} ${npc.name}이(가) 승부를 걸어왔다!`, {
@@ -209,9 +278,7 @@ export default function RunningPage() {
 
   const handleBattleNpc = () => {
     if (!npcEncounter) return;
-    // Store NPC data in sessionStorage for Battle page
     sessionStorage.setItem('routinmon-ai-npc', JSON.stringify(npcEncounter));
-    // Pause running
     handlePause();
     navigate('/battle?aiNpc=true');
   };
@@ -234,6 +301,9 @@ export default function RunningPage() {
     setLegendaryEncounter(null);
     setLegendaryCaught(false);
     setLegendaryMissionProgress(0);
+    setActiveQuests([]);
+    clearActiveQuests();
+    lastEncounterDistRef.current = 0;
     setNpcEncounter(null);
     lastNpcCheckDistRef.current = 0;
     resetEncounterDistance();
@@ -267,28 +337,23 @@ export default function RunningPage() {
     setFoodReward(food);
     setExpReward(exp);
 
-    // Grant EXP to party Pokémon
     const partyResults = grantExpToParty(exp);
     setPartyExpResults(partyResults);
 
-    // Set hatched eggs for overlay animation
     if (hatched.length > 0) {
       setHatchedEggs(hatched);
     }
 
-    // Grant new egg based on distance
     let eggRarity: 'common' | 'uncommon' | 'rare' = 'common';
     if (session.distanceKm >= 5) eggRarity = 'rare';
     else if (session.distanceKm >= 3) eggRarity = 'uncommon';
     const newEgg = createEgg(eggRarity);
     if (newEgg) toast(`🥚 ${RARITY_CONFIG[eggRarity].label} 알을 획득했다!`);
 
-    // Wild encounter
-    const encounter = triggerEncounter(session.distanceKm);
-    if (encounter) {
-      catchPokemon(encounter.id);
-      toast(`⚡ 야생의 ${encounter.name}을(를) 발견하여 포획했다!`);
-    }
+    // Fail uncompleted quests
+    failAllActiveQuests();
+    // Remove completed quests from display (keep caught ones briefly)
+    setActiveQuests(prev => prev.filter(q => q.quest.completed));
 
     setRunState('completed');
   };
@@ -307,14 +372,12 @@ export default function RunningPage() {
             <h1 className="text-2xl font-bold text-foreground mt-2">런닝 완료!</h1>
           </motion.div>
 
-          {/* Route map */}
           {completedSession.route.length > 1 && (
             <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }} className="mb-4">
               <RunningMap route={completedSession.route} className="h-48" />
             </motion.div>
           )}
 
-          {/* Leader celebration */}
           <motion.div initial={{ scale: 0.8, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} transition={{ delay: 0.2 }} className="flex flex-col items-center mb-6">
             {leaderSpecies ? (
               <motion.img
@@ -333,7 +396,6 @@ export default function RunningPage() {
             </motion.div>
           </motion.div>
 
-          {/* Stats */}
           <div className="glass-card p-5 space-y-4 mb-4">
             <div className="grid grid-cols-3 gap-3 text-center">
               <div>
@@ -358,7 +420,6 @@ export default function RunningPage() {
             </div>
           </div>
 
-          {/* Rewards */}
           <div className="glass-card p-4 mb-4">
             <p className="text-xs text-muted-foreground mb-3">🎁 획득 보상</p>
             <div className="flex gap-4 justify-center">
@@ -373,7 +434,6 @@ export default function RunningPage() {
             </div>
           </div>
 
-          {/* Party EXP Results */}
           {partyExpResults.length > 0 && partyExpResults.some(r => r.expGained > 0) && (
             <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.9 }} className="glass-card p-4 mb-4">
               <p className="text-xs text-muted-foreground mb-2">⚡ 파티 경험치</p>
@@ -397,6 +457,24 @@ export default function RunningPage() {
                       </div>
                     </div>
                   );
+                })}
+              </div>
+            </motion.div>
+          )}
+
+          {/* Caught Pokémon summary */}
+          {activeQuests.filter(q => q.quest.completed).length > 0 && (
+            <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.95 }} className="glass-card p-4 mb-4 border border-secondary/30">
+              <p className="text-xs text-muted-foreground mb-2">🔴 포획한 포켓몬</p>
+              <div className="flex gap-2 flex-wrap">
+                {activeQuests.filter(q => q.quest.completed).map(({ quest }) => {
+                  const sp = getPokemonById(quest.speciesId);
+                  return sp ? (
+                    <div key={quest.id} className="flex items-center gap-1.5 bg-secondary/10 rounded-lg px-2 py-1">
+                      <img src={sp.spriteUrl} alt={sp.name} className="w-6 h-6 object-contain" style={{ imageRendering: 'pixelated' }} />
+                      <span className="text-[10px] font-medium text-foreground">{sp.name}</span>
+                    </div>
+                  ) : null;
                 })}
               </div>
             </motion.div>
@@ -555,6 +633,11 @@ export default function RunningPage() {
           )}
         </div>
 
+        {/* Catch Quest Banners */}
+        {runState !== 'idle' && (
+          <CatchQuestBanner quests={activeQuests.filter(q => !q.quest.completed)} />
+        )}
+
         {/* Legendary Mission Banner */}
         <AnimatePresence>
           {legendaryEncounter && runState !== 'idle' && (
@@ -574,11 +657,11 @@ export default function RunningPage() {
                   className="flex-shrink-0"
                 >
                   {(() => {
-                    const sp = getPokemonById(legendaryEncounter.hotspot.speciesId);
+                    const sp = getPokemonById(legendaryEncounter.definition.speciesId);
                     return sp ? (
                       <img src={sp.spriteUrl} alt={sp.name} className="w-14 h-14 object-contain" style={{ imageRendering: 'pixelated' }} />
                     ) : (
-                      <span className="text-3xl">{legendaryEncounter.hotspot.emoji}</span>
+                      <span className="text-3xl">{legendaryEncounter.definition.emoji}</span>
                     );
                   })()}
                 </motion.div>
@@ -586,7 +669,7 @@ export default function RunningPage() {
                   <div className="flex items-center gap-1.5 mb-1">
                     <Sparkles size={12} className="text-secondary" />
                     <span className="text-xs font-bold text-foreground">
-                      {legendaryCaught ? `${legendaryEncounter.hotspot.name} 포획 완료!` : `${legendaryEncounter.hotspot.name} 조우!`}
+                      {legendaryCaught ? `${legendaryEncounter.definition.name} 포획 완료!` : `${legendaryEncounter.definition.name} 조우!`}
                     </span>
                   </div>
                   {!legendaryCaught && (
@@ -646,7 +729,6 @@ export default function RunningPage() {
                     <p className="text-xs text-muted-foreground">"{npcEncounter.dialogue.before}"</p>
                   </div>
                 </div>
-                {/* NPC Team preview */}
                 <div className="flex gap-1.5 mb-3">
                   {npcEncounter.teamSpeciesIds.map(id => {
                     const sp = getPokemonById(id);
@@ -736,56 +818,78 @@ export default function RunningPage() {
           </motion.div>
         )}
 
-        {/* Nearby Legendary Hotspots */}
-        {runState === 'idle' && nearbyHotspots.length > 0 && (
+        {/* Legendary & Event Conditions Preview */}
+        {runState === 'idle' && (
           <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }} className="mt-4 glass-card p-4 border border-secondary/20">
             <div className="flex items-center gap-2 mb-3">
               <Sparkles size={14} className="text-secondary" />
-              <span className="text-xs font-bold text-foreground">근처 전설의 포켓몬</span>
+              <span className="text-xs font-bold text-foreground">전설/특수 포켓몬</span>
             </div>
             <div className="space-y-2">
-              {nearbyHotspots.slice(0, 3).map(h => {
-                const sp = getPokemonById(h.speciesId);
+              {(() => {
+                const available = checkLegendaryEncounterConditions();
+                const events = checkSpecialEventConditions();
+                if (available.length > 0 || events.length > 0) {
+                  return (
+                    <>
+                      {available.map(def => {
+                        const sp = getPokemonById(def.speciesId);
+                        return (
+                          <div key={def.speciesId} className="flex items-center gap-3 p-2 rounded-xl bg-secondary/5 border border-secondary/10">
+                            {sp ? (
+                              <img src={sp.spriteUrl} alt={sp.name} className="w-8 h-8 object-contain" style={{ imageRendering: 'pixelated' }} />
+                            ) : (
+                              <span className="text-xl">{def.emoji}</span>
+                            )}
+                            <div className="flex-1 min-w-0">
+                              <span className="text-xs font-semibold text-foreground">{def.name}</span>
+                              <p className="text-[10px] text-secondary">🌟 조우 가능! 런닝을 시작하세요!</p>
+                            </div>
+                          </div>
+                        );
+                      })}
+                      {events.map(evt => {
+                        const sp = getPokemonById(evt.speciesId);
+                        return (
+                          <div key={evt.id} className="flex items-center gap-3 p-2 rounded-xl bg-accent/5 border border-accent/10">
+                            {sp ? (
+                              <img src={sp.spriteUrl} alt={sp.name} className="w-8 h-8 object-contain" style={{ imageRendering: 'pixelated' }} />
+                            ) : (
+                              <span className="text-xl">{evt.emoji}</span>
+                            )}
+                            <div className="flex-1 min-w-0">
+                              <span className="text-xs font-semibold text-foreground">{evt.name}</span>
+                              <p className="text-[10px] text-accent">✨ 특별 조우 가능!</p>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </>
+                  );
+                }
                 return (
-                  <div key={h.id} className={`flex items-center gap-3 p-2 rounded-xl ${h.caught ? 'bg-muted/30' : 'bg-secondary/5 border border-secondary/10'}`}>
-                    {sp ? (
-                      <img src={sp.spriteUrl} alt={sp.name} className={`w-8 h-8 object-contain ${h.caught ? 'grayscale opacity-50' : ''}`} style={{ imageRendering: 'pixelated' }} />
-                    ) : (
-                      <span className="text-xl">{h.emoji}</span>
-                    )}
-                    <div className="flex-1 min-w-0">
-                      <span className="text-xs font-semibold text-foreground">{h.name}</span>
-                      <p className="text-[10px] text-muted-foreground truncate">{h.caught ? '포획 완료' : h.hint}</p>
-                    </div>
-                    <span className="text-[10px] text-muted-foreground flex-shrink-0">{h.distanceKm.toFixed(1)}km</span>
-                  </div>
+                  <p className="text-[10px] text-muted-foreground text-center py-2">
+                    더 많이 달리면 특별한 포켓몬을 만날 수 있어요!
+                  </p>
                 );
-              })}
+              })()}
             </div>
           </motion.div>
         )}
 
-        {/* Scan for hotspots on idle */}
-        {runState === 'idle' && nearbyHotspots.length === 0 && (
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.3 }} className="mt-4">
-            <button
-              onClick={() => {
-                navigator.geolocation?.getCurrentPosition(
-                  pos => setNearbyHotspots(getNearbyHotspots(pos.coords.latitude, pos.coords.longitude)),
-                  () => toast('위치를 확인할 수 없습니다'),
-                  { enableHighAccuracy: true }
-                );
-              }}
-              className="w-full glass-card p-3 text-center text-xs text-muted-foreground hover:text-foreground transition-colors"
-            >
-              <MapPin size={14} className="inline mr-1.5" />
-              근처 전설의 포켓몬 탐색하기
-            </button>
-          </motion.div>
-        )}
+        <div className="mx-auto max-w-md px-0 mt-6">
+          <DebugPanel />
+        </div>
       </div>
-      <DebugPanel />
       <BottomNav />
+
+      {/* Special Encounter Overlay */}
+      <SpecialEncounterOverlay
+        show={specialOverlay.show}
+        speciesId={specialOverlay.speciesId}
+        type={specialOverlay.type}
+        onClose={() => setSpecialOverlay({ show: false, speciesId: null, type: 'catch' })}
+      />
     </div>
   );
 }
