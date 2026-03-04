@@ -1,10 +1,11 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ArrowLeft, Swords, Zap, Shield, Heart, Trophy, Coins, Sparkles, AlertTriangle } from 'lucide-react';
+import { ArrowLeft, Swords, Zap, Shield, Heart, Trophy, Coins, Sparkles, AlertTriangle, X } from 'lucide-react';
 import { toast } from 'sonner';
-import { getParty, markAsSeen, addCoins, grantExpToParty } from '@/lib/collection';
-import { getPokemonById } from '@/lib/pokemon-registry';
+import { getParty, markAsSeen, addCoins, grantExpToParty, getFriendshipLevel, type OwnedPokemon } from '@/lib/collection';
+import { getPokemonById, RARITY_CONFIG, TYPE_CONFIG } from '@/lib/pokemon-registry';
+import { getPokemonHabitats } from '@/lib/pokemon-habitat';
 import {
   buildBattleTeam, buildNpcBattleTeam, simulateBattle,
   saveBattleRecord, type BattleResult, type BattleTurnLog, type BattlePokemon, type BattleMove,
@@ -56,6 +57,8 @@ export default function BattlePage() {
 
   const party = getParty();
   const injuredCount = getInjuredCount();
+  // Party detail popup in select phase
+  const [partyDetailPokemon, setPartyDetailPokemon] = useState<OwnedPokemon | null>(null);
 
   useEffect(() => {
     if ((preselectedNpc || isAiNpc) && selectedNpc) {
@@ -320,16 +323,21 @@ export default function BattlePage() {
 
           {party.length > 0 && (
             <div className="glass-card p-3 mb-4">
-              <p className="text-[10px] text-muted-foreground mb-2 font-medium">내 파티 상태</p>
+              <p className="text-[10px] text-muted-foreground mb-2 font-medium">내 파티 상태 <span className="text-muted-foreground/50">(탭하여 상세보기)</span></p>
               <div className="flex gap-2">
                 {party.map(p => {
                   const species = getPokemonById(p.speciesId);
                   const hpRatio = getEffectiveHpRatio(p.uid);
                   const able = hpRatio > 0;
                   return (
-                    <div key={p.uid} className={`flex-1 text-center ${!able ? 'opacity-40' : ''}`}>
+                    <button
+                      key={p.uid}
+                      onClick={() => setPartyDetailPokemon(p)}
+                      className={`flex-1 text-center rounded-lg p-1 transition-colors hover:bg-muted/50 ${!able ? 'opacity-40' : ''}`}
+                    >
                       {species && <img src={species.spriteUrl} alt={species.name} className="w-8 h-8 mx-auto object-contain" style={{ imageRendering: 'pixelated' }} />}
-                      <div className="h-1.5 rounded-full bg-muted overflow-hidden mt-1">
+                      <p className="text-[8px] text-muted-foreground truncate">{p.nickname || species?.name}</p>
+                      <div className="h-1.5 rounded-full bg-muted overflow-hidden mt-0.5">
                         <div
                           className="h-full rounded-full transition-all"
                           style={{
@@ -339,12 +347,130 @@ export default function BattlePage() {
                         />
                       </div>
                       {!able && <p className="text-[8px] text-destructive mt-0.5">기절</p>}
-                    </div>
+                    </button>
                   );
                 })}
               </div>
             </div>
           )}
+
+          {/* Party Detail Popup */}
+          <AnimatePresence>
+            {partyDetailPokemon && (() => {
+              const detailSpecies = getPokemonById(partyDetailPokemon.speciesId);
+              const detailFriendship = getFriendshipLevel(partyDetailPokemon.friendship);
+              const detailHabitats = detailSpecies ? getPokemonHabitats(partyDetailPokemon.speciesId, detailSpecies.types) : [];
+              const detailHpRatio = getEffectiveHpRatio(partyDetailPokemon.uid);
+              if (!detailSpecies) return null;
+              return (
+                <motion.div
+                  key="party-detail"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-6"
+                  onClick={() => setPartyDetailPokemon(null)}
+                >
+                  <motion.div
+                    initial={{ scale: 0.9, y: 20 }}
+                    animate={{ scale: 1, y: 0 }}
+                    exit={{ scale: 0.9, y: 20 }}
+                    onClick={e => e.stopPropagation()}
+                    className="w-full max-w-[340px] bg-card rounded-2xl border border-border/60 overflow-hidden max-h-[80vh] overflow-y-auto"
+                  >
+                    {/* Header */}
+                    <div className="relative pt-5 pb-3 px-5 text-center">
+                      <button onClick={() => setPartyDetailPokemon(null)} className="absolute top-3 right-3 p-1.5 rounded-lg bg-muted/50 text-muted-foreground hover:text-foreground">
+                        <X size={14} />
+                      </button>
+                      <motion.img
+                        src={detailSpecies.spriteUrl}
+                        alt={detailSpecies.name}
+                        className="w-20 h-20 object-contain mx-auto"
+                        style={{ imageRendering: 'pixelated' }}
+                        animate={{ y: [0, -4, 0] }}
+                        transition={{ duration: 2.5, repeat: Infinity, ease: 'easeInOut' }}
+                      />
+                      <p className="text-sm font-bold text-foreground mt-1">
+                        {partyDetailPokemon.nickname || detailSpecies.name}
+                      </p>
+                      {partyDetailPokemon.nickname && (
+                        <p className="text-[10px] text-muted-foreground">{detailSpecies.name}</p>
+                      )}
+                    </div>
+
+                    <div className="px-4 pb-4 space-y-3">
+                      {/* Stats */}
+                      <div className="grid grid-cols-3 gap-1.5 text-center">
+                        <div className="glass-card p-1.5 rounded-lg">
+                          <p className="text-[9px] text-muted-foreground">레벨</p>
+                          <p className="text-xs font-bold text-foreground">{partyDetailPokemon.level}</p>
+                        </div>
+                        <div className="glass-card p-1.5 rounded-lg">
+                          <p className="text-[9px] text-muted-foreground">등급</p>
+                          <p className={`text-xs font-bold ${RARITY_CONFIG[detailSpecies.rarity].color}`}>
+                            {RARITY_CONFIG[detailSpecies.rarity].label}
+                          </p>
+                        </div>
+                        <div className="glass-card p-1.5 rounded-lg">
+                          <p className="text-[9px] text-muted-foreground">HP</p>
+                          <p className={`text-xs font-bold ${detailHpRatio > 0.5 ? 'text-heal' : detailHpRatio > 0 ? 'text-amber' : 'text-destructive'}`}>
+                            {detailHpRatio <= 0 ? '기절' : `${Math.round(detailHpRatio * 100)}%`}
+                          </p>
+                        </div>
+                      </div>
+
+                      {/* Types */}
+                      <div className="flex gap-1.5">
+                        {detailSpecies.types.map(t => (
+                          <span key={t} className={`text-[10px] px-2 py-0.5 rounded-full text-white ${TYPE_CONFIG[t].color}`}>
+                            {TYPE_CONFIG[t].emoji} {TYPE_CONFIG[t].label}
+                          </span>
+                        ))}
+                      </div>
+
+                      {/* Friendship */}
+                      <div className="glass-card p-2.5 rounded-lg">
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="text-[10px] font-semibold text-foreground">❤️ 친밀도</span>
+                          <span className="text-[10px] text-foreground">{detailFriendship.emoji} {detailFriendship.label}</span>
+                        </div>
+                        <div className="h-1.5 rounded-full bg-muted overflow-hidden">
+                          <div className="h-full rounded-full gradient-primary" style={{ width: `${(partyDetailPokemon.friendship / 255) * 100}%` }} />
+                        </div>
+                        <p className="text-[8px] text-muted-foreground mt-0.5 text-right">{partyDetailPokemon.friendship}/255</p>
+                      </div>
+
+                      {/* Description */}
+                      {detailSpecies.description && (
+                        <p className="text-[10px] text-muted-foreground leading-relaxed glass-card p-2.5 rounded-lg">
+                          📖 {detailSpecies.description}
+                        </p>
+                      )}
+
+                      {/* Habitat */}
+                      {detailHabitats.length > 0 && (
+                        <div className="glass-card p-2.5 rounded-lg">
+                          <p className="text-[10px] font-semibold text-foreground mb-1.5">🗺️ 출몰 · 서식지</p>
+                          <div className="space-y-1">
+                            {detailHabitats.map(h => (
+                              <div key={h.id} className="flex items-center gap-2 p-1.5 rounded bg-muted/30">
+                                <span className="text-sm">{h.emoji}</span>
+                                <div className="flex-1 min-w-0">
+                                  <p className="text-[10px] font-semibold text-foreground">{h.name}</p>
+                                  <p className="text-[8px] text-muted-foreground">{h.description}</p>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </motion.div>
+                </motion.div>
+              );
+            })()}
+          </AnimatePresence>
 
           <div className="space-y-3">
             {NPC_TRAINERS.map(npc => (
