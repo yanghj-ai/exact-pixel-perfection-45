@@ -78,7 +78,6 @@ export default function RunningPage() {
   const [pedometerAvailable, setPedometerAvailable] = useState(true);
   const [showMap, setShowMap] = useState(false);
   const [amoledMode, setAmoledMode] = useState(false);
-  const [amoledMode, setAmoledMode] = useState(false);
   const multiplierShownRef = useRef<Set<number>>(new Set());
 
   // Milestone messages during run
@@ -1020,27 +1019,7 @@ export default function RunningPage() {
                 </p>
               </div>
 
-              {/* Goal progress */}
-              {selectedGoal !== 'free' && GOAL_CONFIG[selectedGoal].target && (
-                <div>
-                  <div className="flex items-center justify-between mb-1">
-                    <span className="text-[10px] text-muted-foreground">🎯 목표: {GOAL_CONFIG[selectedGoal].label}</span>
-                    <span className="text-[10px] font-bold text-foreground">
-                      {Math.min(100, Math.round(
-                        (selectedGoal.startsWith('steps') ? steps : elapsed)
-                        / GOAL_CONFIG[selectedGoal].target! * 100
-                      ))}%
-                    </span>
-                  </div>
-                  <div className="h-2 w-full rounded-full bg-muted overflow-hidden">
-                    <motion.div
-                      className="h-full rounded-full gradient-primary"
-                      initial={false}
-                      animate={{ width: `${Math.min(100, (selectedGoal.startsWith('steps') ? steps : elapsed) / GOAL_CONFIG[selectedGoal].target! * 100)}%` }}
-                    />
-                  </div>
-                </div>
-              )}
+              {/* Goal progress removed - auto multiplier system */}
 
               {/* Sub stats */}
               <div className="grid grid-cols-4 gap-2">
