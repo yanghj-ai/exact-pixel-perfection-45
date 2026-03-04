@@ -1,16 +1,32 @@
 import { motion } from 'framer-motion';
-import { Apple, Play, BookOpen, TrendingUp } from 'lucide-react';
+import { Activity, Play, BookOpen, TrendingUp } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import { getConditionEmoji, getConditionLabel, type ConditionLevel } from '@/lib/pokemon-condition';
+import { toast } from 'sonner';
 
 interface QuickActionsProps {
-  onFeed: () => void;
+  condition: number;
+  conditionLevel: ConditionLevel;
 }
 
-export default function QuickActions({ onFeed }: QuickActionsProps) {
+export default function QuickActions({ condition, conditionLevel }: QuickActionsProps) {
   const navigate = useNavigate();
 
+  const handleConditionInfo = () => {
+    const info: Record<ConditionLevel, string> = {
+      exhausted: '스탯 -20%. 러닝으로 컨디션을 올려주세요!',
+      tired: '스탯 -10%. 조금만 더 달려볼까요?',
+      normal: '기본 상태. 달리면 컨디션이 올라갑니다!',
+      good: '스탯 +5%! 좋은 컨디션이에요!',
+      perfect: '스탯 +10%, 크리티컬 +5%! 최고 상태!',
+    };
+    toast(`${getConditionEmoji(conditionLevel)} 컨디션: ${getConditionLabel(conditionLevel)}`, {
+      description: info[conditionLevel],
+    });
+  };
+
   const actions = [
-    { icon: Apple, label: '먹이', color: 'bg-primary/10', textColor: 'text-primary', onClick: onFeed },
+    { icon: Activity, label: '컨디션', color: 'bg-primary/10', textColor: 'text-primary', onClick: handleConditionInfo },
     { icon: Play, label: '런닝', color: 'bg-heal/10', textColor: 'text-heal', onClick: () => navigate('/run') },
     { icon: BookOpen, label: '도감', color: 'bg-accent/10', textColor: 'text-accent', onClick: () => navigate('/pokedex') },
     { icon: TrendingUp, label: '기록', color: 'bg-amber/10', textColor: 'text-amber', onClick: () => navigate('/history') },

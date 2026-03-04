@@ -1,5 +1,5 @@
 // ═══════════════════════════════════════════════════════════
-// 러닝 스트릭 시스템 — 연속 출석 + 마일스톤 보상
+// 러닝 스트릭 시스템 — 연속 출석 + 마일스톤 보상 + 기록 저장
 // ═══════════════════════════════════════════════════════════
 
 import { isCloudReady } from './cloud-storage';
@@ -7,9 +7,9 @@ import { isCloudReady } from './cloud-storage';
 export interface RunningStreakState {
   currentStreak: number;
   longestStreak: number;
-  lastRunDate: string | null;  // ISO date
+  lastRunDate: string | null;
   totalRunDays: number;
-  claimedMilestones: number[]; // streak days already claimed
+  claimedMilestones: number[];
 }
 
 export interface StreakMilestone {
@@ -18,17 +18,31 @@ export interface StreakMilestone {
   berries: number;
   label: string;
   emoji: string;
-  title?: string; // 특별 칭호
+  title?: string;
 }
 
 export const STREAK_MILESTONES: StreakMilestone[] = [
-  { days: 3, coins: 100, berries: 5, label: '시작 격려', emoji: '🔥' },
-  { days: 7, coins: 300, berries: 3, label: '1주 달성', emoji: '⭐' },
-  { days: 14, coins: 500, berries: 5, label: '2주 목표', emoji: '🏅' },
-  { days: 30, coins: 1000, berries: 10, label: '한 달 챌린지', emoji: '👑', title: '마라토너' },
+  { days: 3, coins: 100, berries: 0, label: '시작 격려', emoji: '🔥' },
+  { days: 7, coins: 300, berries: 0, label: '1주 달성', emoji: '⭐' },
+  { days: 14, coins: 500, berries: 0, label: '2주 목표', emoji: '🏅' },
+  { days: 30, coins: 1000, berries: 0, label: '한 달 챌린지', emoji: '👑', title: '마라토너' },
 ];
 
+// ─── Run Records (v4: 러닝 기록 저장) ────────────────────
+
+export interface RunRecord {
+  date: string;
+  steps: number;
+  distanceKm: number;
+  durationSec: number;
+  paceMinPerKm: number | null;
+  companionSpeciesId: number;
+  companionName: string;
+  rewards: { exp: number; coins: number; conditionRecovery: number; friendshipGain: number };
+}
+
 const STREAK_STORAGE = 'routinmon-running-streak';
+const RECORDS_STORAGE = 'routinmon-run-records';
 const MIN_STEPS_FOR_STREAK = 500;
 
 function getToday(): string {
@@ -51,29 +65,18 @@ function saveStreak(state: RunningStreakState) {
   localStorage.setItem(STREAK_STORAGE, JSON.stringify(state));
 }
 
-/**
- * Record a run for today. Returns newly achieved milestones.
- * Only counts if steps >= MIN_STEPS_FOR_STREAK.
- */
 export function recordRunForStreak(steps: number): StreakMilestone[] {
   if (steps < MIN_STEPS_FOR_STREAK) return [];
 
   const state = getRunningStreak();
   const today = getToday();
 
-  // Already recorded today
-  if (state.lastRunDate === today) {
-    saveStreak(state);
-    return [];
-  }
+  if (state.lastRunDate === today) return [];
 
   const yesterday = getYesterday();
-
   if (state.lastRunDate === yesterday) {
-    // Continue streak
     state.currentStreak += 1;
   } else if (state.lastRunDate === null || state.lastRunDate < yesterday) {
-    // Streak broken, restart
     state.currentStreak = 1;
   }
 
@@ -83,7 +86,6 @@ export function recordRunForStreak(steps: number): StreakMilestone[] {
     state.longestStreak = state.currentStreak;
   }
 
-  // Check milestones
   const newMilestones: StreakMilestone[] = [];
   for (const m of STREAK_MILESTONES) {
     if (state.currentStreak >= m.days && !state.claimedMilestones.includes(m.days)) {
@@ -96,8 +98,59 @@ export function recordRunForStreak(steps: number): StreakMilestone[] {
   return newMilestones;
 }
 
-/** Get streak bonus multiplier for rewards */
 export function getStreakBonus(): number {
-  const state = getRunningStreak();
-  return Math.min(2.0, 1.0 + state.currentStreak * 0.1);
+  return Math.min(2.0, 1.0 + getRunningStreak().currentStreak * 0.1);
+}
+
+// ─── Run Records ─────────────────────────────────────────
+
+export function getRunRecords(): RunRecord[] {
+  const data = localStorage.getItem(RECORDS_STORAGE);
+  return data ? JSON.parse(data) : [];
+}
+
+export function saveRunRecord(record: RunRecord) {
+  const records = getRunRecords();
+  records.unshift(record);
+  if (records.length > 50) records.length = 50;
+  localStorage.setItem(RECORDS_STORAGE, JSON.stringify(records));
+}
+
+/** 최근 N일 일별 걸음수 합산 */
+export function getDailyStepHistory(days: number = 7): { date: string; steps: number }[] {
+  const records = getRunRecords();
+  const result: { date: string; steps: number }[] = [];
+  const today = new Date();
+
+  for (let i = 0; i < days; i++) {
+    const d = new Date(today);
+    d.setDate(d.getDate() - i);
+    const dateStr = d.toISOString().split('T')[0];
+    const daySteps = records
+      .filter(r => r.date === dateStr)
+      .reduce((sum, r) => sum + r.steps, 0);
+    result.push({ date: dateStr, steps: daySteps });
+  }
+
+  return result.reverse();
+}
+
+/** 러닝 기록이 있는 날짜 Set (최근 30일) */
+export function getRunDates(days: number = 30): Set<string> {
+  const records = getRunRecords();
+  const today = new Date();
+  const cutoff = new Date(today);
+  cutoff.setDate(cutoff.getDate() - days);
+  const cutoffStr = cutoff.toISOString().split('T')[0];
+
+  return new Set(records.filter(r => r.date >= cutoffStr).map(r => r.date));
+}
+
+export function resetRunRecords() {
+  localStorage.removeItem(RECORDS_STORAGE);
+}
+
+export function resetStreakData() {
+  localStorage.removeItem(STREAK_STORAGE);
+  localStorage.removeItem(RECORDS_STORAGE);
 }
