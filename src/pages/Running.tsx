@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Play, Pause, Square, Timer, Flame, Navigation, Map, Swords, Footprints } from 'lucide-react';
 import { toast } from 'sonner';
-import { formatDuration, formatPace } from '@/lib/running';
+import { formatDuration, formatPace, getRunningStats } from '@/lib/running';
 import { Pedometer, stepsToKm, estimateCaloriesFromSteps, addTodaySteps, getTodaySteps } from '@/lib/pedometer';
 import { GpsTracker, type GpsPoint } from '@/lib/gps-tracker';
 import { validateRunSession } from '@/lib/activity-validator';
@@ -12,7 +12,9 @@ import { recordRunForStreak, getRunningStreak, saveRunRecord, type StreakMilesto
 import { getMoodForSteps, getMoodEmoji as getCompanionMoodEmoji, getCheerMessage, type CompanionMood } from '@/lib/pokemon-companion';
 import { updateBondAfterRun, getBondState, getMoodEmoji as getBondMoodEmoji } from '@/lib/pokemon-bond';
 import { recoverCondition, getConditionState } from '@/lib/pokemon-condition';
-import { triggerEncounter, catchPokemon, markAsSeen, grantExpToParty, getParty, type PartyExpResult } from '@/lib/collection';
+import { catchPokemon, markAsSeen, grantExpToParty, getParty, type PartyExpResult } from '@/lib/collection';
+import { processEncounters, findRegionByGps, getDefaultRegion, type SpawnResult } from '@/lib/pokemon-spawn';
+import { getGradeInfo } from '@/lib/pokemon-grade';
 import { getPokemonById } from '@/lib/pokemon-registry';
 import { getPet, grantRewards } from '@/lib/pet';
 import type { LevelUpResult } from '@/lib/pet';
@@ -86,6 +88,7 @@ export default function RunningPage() {
     friendshipGain: number;
     goalAchieved: boolean;
     goalBonus: number;
+    spawnResults: SpawnResult[];
   } | null>(null);
 
   // Encounters
@@ -209,21 +212,7 @@ export default function RunningPage() {
     }
   }, [legendaryEncounter, currentDistance, elapsed, legendaryCaught, currentPace]);
 
-  // Wild encounter + catch quest
-  useEffect(() => {
-    if (runState !== 'running') return;
-    if (currentDistance - lastEncounterDistRef.current < 0.8) return;
-    const encounter = triggerEncounter(currentDistance);
-    if (encounter) {
-      lastEncounterDistRef.current = currentDistance;
-      const quest = createCatchQuest(encounter.id, encounter.name, encounter.rarity, currentDistance);
-      addActiveQuest(quest);
-      markAsSeen([encounter.id]);
-      const pace = currentPace ?? 0;
-      setActiveQuests(prev => [...prev, { quest, progress: checkQuestProgress(quest, currentDistance, elapsed, pace) }]);
-      toast(`🔴 야생의 ${encounter.name} 발견!`, { description: quest.requirements.map(r => r.label).join(' + '), duration: 4000 });
-    }
-  }, [runState, currentDistance, elapsed]);
+  // Wild encounter - now handled at run completion via processEncounters
 
   // Update quest progress
   useEffect(() => {
@@ -383,11 +372,30 @@ export default function RunningPage() {
     // Party EXP
     const partyResults = grantExpToParty(rewards.exp);
 
+    // 지역 기반 포켓몬 조우 처리
+    const lastGpsPoint = gpsPoints.length > 0 ? gpsPoints[gpsPoints.length - 1] : null;
+    const region = lastGpsPoint ? findRegionByGps(lastGpsPoint.lat, lastGpsPoint.lng) : null;
+    const distKm = Math.round(stepsToKm(finalSteps, true) * 100) / 100;
+    const runPace = pace ?? 8.0;
+    const totalKm = getRunningStats().totalDistanceKm + distKm;
+    const spawnResults = processEncounters(region, distKm, runPace, totalKm);
+
+    // 조우한 포켓몬 즉시 획득
+    for (const spawn of spawnResults) {
+      catchPokemon(spawn.speciesId);
+      markAsSeen([spawn.speciesId]);
+      const gradeInfo = getGradeInfo(spawn.grade);
+      toast(`${gradeInfo.emoji} ${spawn.name} 획득!`, {
+        description: spawn.isNew ? '🆕 새로운 포켓몬!' : '도감에 등록된 포켓몬',
+        duration: 3000,
+      });
+    }
+
     // 기록 저장
     saveRunRecord({
       date: new Date().toISOString().split('T')[0],
       steps: finalSteps,
-      distanceKm: Math.round(stepsToKm(finalSteps, true) * 100) / 100,
+      distanceKm: distKm,
       durationSec: finalDuration,
       paceMinPerKm: pace,
       companionSpeciesId: leaderSpecies?.id ?? 0,
@@ -405,7 +413,7 @@ export default function RunningPage() {
 
     setCompletedData({
       steps: finalSteps,
-      distanceKm: Math.round(stepsToKm(finalSteps, true) * 100) / 100,
+      distanceKm: distKm,
       durationSec: finalDuration,
       pace,
       calories: estimateCaloriesFromSteps(finalSteps),
@@ -417,6 +425,7 @@ export default function RunningPage() {
       friendshipGain: rewards.friendshipGain,
       goalAchieved,
       goalBonus,
+      spawnResults,
     });
 
     setRunState('completed');
@@ -553,6 +562,37 @@ export default function RunningPage() {
                         {r.evolved && <span className="text-accent font-bold">✨ 진화!</span>}
                       </div>
                     </div>
+                  );
+                })}
+              </div>
+            </motion.div>
+          )}
+
+          {/* Spawned Pokemon */}
+          {completedData.spawnResults.length > 0 && (
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 1.1 }} className="glass-card p-4 mb-4 border border-primary/20">
+              <p className="text-xs text-muted-foreground mb-2">🎊 포획한 포켓몬</p>
+              <div className="space-y-2">
+                {completedData.spawnResults.map((spawn, i) => {
+                  const species = getPokemonById(spawn.speciesId);
+                  const gradeInfo = getGradeInfo(spawn.grade);
+                  return (
+                    <motion.div
+                      key={spawn.speciesId}
+                      initial={{ opacity: 0, x: -20 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      transition={{ delay: 1.2 + i * 0.15 }}
+                      className="flex items-center justify-between"
+                    >
+                      <div className="flex items-center gap-2">
+                        {species && <img src={species.spriteUrl} alt={species.name} className="w-8 h-8 object-contain" style={{ imageRendering: 'pixelated' }} />}
+                        <div>
+                          <span className="text-xs font-medium text-foreground">{spawn.name}</span>
+                          {spawn.isNew && <span className="ml-1.5 text-[10px] px-1.5 py-0.5 rounded-full bg-primary/15 text-primary font-bold">NEW</span>}
+                        </div>
+                      </div>
+                      <span className="text-[10px] font-bold" style={{ color: gradeInfo.color }}>{gradeInfo.emoji} {gradeInfo.label}</span>
+                    </motion.div>
                   );
                 })}
               </div>
