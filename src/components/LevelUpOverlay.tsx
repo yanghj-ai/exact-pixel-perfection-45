@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import type { LevelUpResult, PokemonStage } from '@/lib/pet';
 import { getStageInfo } from '@/lib/pet';
@@ -17,7 +17,7 @@ function getPreviousStage(stage: PokemonStage): PokemonStage {
   return 'charmander';
 }
 
-export default function LevelUpOverlay({ result, pet, onClose }: LevelUpOverlayProps) {
+const LevelUpOverlay = React.forwardRef<HTMLDivElement, LevelUpOverlayProps>(function LevelUpOverlay({ result, pet, onClose }, ref) {
   const [phase, setPhase] = useState<'enter' | 'glow' | 'evolve' | 'reveal' | 'done'>('enter');
 
   const isEvolution = result?.evolved && result?.newStage;
@@ -362,4 +362,6 @@ export default function LevelUpOverlay({ result, pet, onClose }: LevelUpOverlayP
       </motion.div>
     </AnimatePresence>
   );
-}
+});
+
+export default LevelUpOverlay;

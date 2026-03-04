@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { getPokemonById } from '@/lib/pokemon-registry';
 
@@ -20,7 +20,7 @@ interface ItemEffectOverlayProps {
   onClose: () => void;
 }
 
-export default function ItemEffectOverlay({ effect, onClose }: ItemEffectOverlayProps) {
+const ItemEffectOverlay = React.forwardRef<HTMLDivElement, ItemEffectOverlayProps>(function ItemEffectOverlay({ effect, onClose }, ref) {
   const [phase, setPhase] = useState<'enter' | 'glow' | 'evolve' | 'reveal'>('enter');
 
   const isEvolution = effect?.type === 'evolution';
@@ -343,4 +343,6 @@ export default function ItemEffectOverlay({ effect, onClose }: ItemEffectOverlay
       </motion.div>
     </AnimatePresence>
   );
-}
+});
+
+export default ItemEffectOverlay;

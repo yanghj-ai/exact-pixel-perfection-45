@@ -1,3 +1,4 @@
+import React from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 
 interface AttendanceBonusProps {
@@ -8,7 +9,7 @@ interface AttendanceBonusProps {
   onClose: () => void;
 }
 
-export default function AttendanceBonus({ show, consecutiveDays, bonusFood, bonusExp, onClose }: AttendanceBonusProps) {
+const AttendanceBonus = React.forwardRef<HTMLDivElement, AttendanceBonusProps>(function AttendanceBonus({ show, consecutiveDays, bonusFood, bonusExp, onClose }, ref) {
   if (!show) return null;
 
   return (
@@ -100,4 +101,6 @@ export default function AttendanceBonus({ show, consecutiveDays, bonusFood, bonu
       </motion.div>
     </AnimatePresence>
   );
-}
+});
+
+export default AttendanceBonus;
