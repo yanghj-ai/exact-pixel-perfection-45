@@ -4,7 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { saveProfile } from '@/lib/storage';
 import { savePet } from '@/lib/pet';
 import { upsertStarter, markAsSeen } from '@/lib/collection';
-import { ChevronRight, Clock } from 'lucide-react';
+import { ChevronRight } from 'lucide-react';
 import professorOakImg from '@/assets/professor-oak.png';
 
 const SPRITE_BASE = 'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/versions/generation-v/black-white/animated';
@@ -15,13 +15,13 @@ const STARTERS = [
   { id: 1, name: '이상해씨', type: '풀', emoji: '🌿', desc: '등에 심어진 씨앗이 자라며 영양분을 공급하는 포켓몬', color: 'from-green-400/20 to-emerald-500/20', border: 'border-green-400' },
 ];
 
-type Phase = 'oak-intro' | 'oak-talk-1' | 'oak-talk-2' | 'ask-name' | 'ask-time' | 'oak-lab' | 'choose-starter' | 'pokeball-anim' | 'starter-reveal' | 'farewell';
+type Phase = 'oak-intro' | 'oak-talk-1' | 'oak-talk-2' | 'ask-name' | 'oak-lab' | 'choose-starter' | 'pokeball-anim' | 'starter-reveal' | 'farewell';
 
 export default function Onboarding() {
   const navigate = useNavigate();
   const [phase, setPhase] = useState<Phase>('oak-intro');
   const [name, setName] = useState('');
-  const [offWorkTime, setOffWorkTime] = useState('18:00');
+  
   const [selectedStarter, setSelectedStarter] = useState<number | null>(null);
   const [dialogText, setDialogText] = useState('');
   const [displayedText, setDisplayedText] = useState('');
@@ -90,10 +90,6 @@ export default function Onboarding() {
 
   const submitName = () => {
     if (!name.trim()) return;
-    setPhase('ask-time');
-  };
-
-  const submitTime = () => {
     setPhase('oak-lab');
   };
 
@@ -110,7 +106,7 @@ export default function Onboarding() {
 
     setTimeout(() => {
       // Save everything
-      saveProfile({ name, offWorkTime, onboardingComplete: true });
+      saveProfile({ name, onboardingComplete: true });
       const starter = STARTERS.find(s => s.id === selectedStarter)!;
       savePet({ name: starter.name });
       upsertStarter(selectedStarter);
@@ -243,41 +239,6 @@ export default function Onboarding() {
     );
   }
 
-  // ── Ask Time ──
-  if (phase === 'ask-time') {
-    return (
-      <div className="min-h-screen bg-background flex flex-col items-center justify-center px-6">
-        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="text-center max-w-sm w-full">
-          <img src={professorOakImg} alt="오박사" className="w-36 h-36 object-contain mx-auto mb-4" />
-          <div className="glass-card p-5 text-left mb-6">
-            <p className="text-xs text-primary font-bold mb-1.5">오박사</p>
-            <p className="text-sm text-foreground leading-relaxed">
-              {name}! 좋은 이름이군. 그런데 자네는 보통 몇 시에 자유 시간이 생기나? 런닝하기 좋은 시간을 알려주게.
-            </p>
-          </div>
-
-          <div className="glass-card p-4 mb-4 flex items-center gap-3 justify-center">
-            <Clock className="h-6 w-6 text-primary" />
-            <input
-              type="time"
-              value={offWorkTime}
-              onChange={(e) => setOffWorkTime(e.target.value)}
-              className="rounded-xl border border-border bg-card px-4 py-3 text-xl text-foreground focus:outline-none focus:ring-2 focus:ring-primary/50 [color-scheme:dark]"
-            />
-          </div>
-
-          <motion.button
-            whileTap={{ scale: 0.97 }}
-            onClick={submitTime}
-            className="w-full rounded-2xl py-4 text-lg font-semibold gradient-primary text-primary-foreground flex items-center justify-center gap-2"
-          >
-            다음 <ChevronRight size={20} />
-          </motion.button>
-        </motion.div>
-      </div>
-    );
-  }
-
   // ── Choose Starter ──
   if (phase === 'choose-starter') {
     return (
@@ -347,7 +308,7 @@ export default function Onboarding() {
                   />
                   <div>
                     <p className="font-bold text-foreground">{selectedStarterData.name}</p>
-                    <p className="text-[10px] text-muted-foreground">{selectedStarterData.emoji} {selectedStarterData.type} 타입 · Lv.5</p>
+                    <p className="text-[10px] text-muted-foreground">{selectedStarterData.emoji} {selectedStarterData.type} 타입 · Lv.1</p>
                     <p className="text-xs text-muted-foreground mt-1">{selectedStarterData.desc}</p>
                   </div>
                 </div>
@@ -482,7 +443,7 @@ export default function Onboarding() {
             transition={{ delay: 0.6 }}
             className="text-muted-foreground text-sm mb-6"
           >
-            {selectedStarterData?.emoji} {selectedStarterData?.type} 타입 · Lv.5
+            {selectedStarterData?.emoji} {selectedStarterData?.type} 타입 · Lv.1
           </motion.p>
 
           {/* Oak farewell dialog */}
