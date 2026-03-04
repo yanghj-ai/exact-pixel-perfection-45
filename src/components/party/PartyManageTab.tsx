@@ -3,7 +3,7 @@ import { useState } from 'react';
 import { motion } from 'framer-motion';
 import { Crown, ArrowUp, ArrowDown, Package, Trash2, Edit3, Check, X } from 'lucide-react';
 import { toast } from 'sonner';
-import { type OwnedPokemon, setAsLeader, removeFromParty, reorderParty, setNickname, getParty, getCollection } from '@/lib/collection';
+import { type OwnedPokemon, setAsLeader, removeFromParty, reorderParty, setNickname, getParty, releasePokemon } from '@/lib/collection';
 import { getPokemonById } from '@/lib/pokemon-registry';
 import { Input } from '@/components/ui/input';
 import {
@@ -60,12 +60,11 @@ export default function PartyManageTab({ pokemon, partyIndex, onRefresh, onClose
   };
 
   const handleRelease = () => {
-    // 방생: owned에서 제거 (도감 기록은 유지)
-    const col = getCollection();
-    col.owned = col.owned.filter(p => p.uid !== pokemon.uid);
-    col.party = col.party.filter(uid => uid !== pokemon.uid);
-    // Save via localStorage directly (collection.ts saveCollection is private)
-    localStorage.setItem('routinmon-collection', JSON.stringify(col));
+    const success = releasePokemon(pokemon.uid);
+    if (!success) {
+      toast('파티에 최소 1마리는 남아야 합니다!');
+      return;
+    }
     toast(`${pokemon.nickname || species.name}을(를) 방생했어요... 안녕! 👋`, { duration: 4000 });
     onRefresh();
     onClose();

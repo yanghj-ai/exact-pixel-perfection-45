@@ -109,6 +109,21 @@ function saveCollection(state: CollectionState) {
   }
 }
 
+/** 포켓몬 방생 (도감 기록 유지, cloud sync 포함) */
+export function releasePokemon(uid: string): boolean {
+  const col = getCollection();
+  // 파티에 1마리만 있으면 방생 불가
+  const isInParty = col.party.includes(uid);
+  if (isInParty && col.party.length <= 1) return false;
+
+  col.owned = col.owned.filter(p => p.uid !== uid);
+  col.party = col.party.filter(u => u !== uid);
+  // isInParty 플래그도 동기화
+  col.owned.forEach(p => { p.isInParty = col.party.includes(p.uid); });
+  saveCollection(col);
+  return true;
+}
+
 // ─── Starter ─────────────────────────────────────────────
 
 export function hasStarter(): boolean {
