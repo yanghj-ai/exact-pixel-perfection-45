@@ -8,7 +8,7 @@ import { getPokemonById } from '@/lib/pokemon-registry';
 import {
   buildBattleTeam, buildNpcBattleTeam, simulateBattle,
   saveBattleRecord, type BattleResult, type BattleTurnLog, type BattlePokemon, type BattleMove,
-  initTurnBattle, executeTurn, calculateBattleRewards, type TurnBasedBattleState,
+  initTurnBattle, executeTurn, executeSwitchTurn, calculateBattleRewards, type TurnBasedBattleState,
 } from '@/lib/battle';
 import { getEffectiveness } from '@/lib/battle';
 import { NPC_TRAINERS, getNpcById, type NpcTrainer } from '@/lib/npc-trainers';
@@ -194,6 +194,9 @@ export default function BattlePage() {
     }
   }, [isAnimating, animatingTurnIdx, currentTurnLogs, animSubPhase]);
 
+  // Switch panel toggle
+  const [showSwitchPanel, setShowSwitchPanel] = useState(false);
+
   const handleMoveSelect = (move: BattleMove) => {
     if (!battleState || isAnimating || battleState.phase === 'finished') return;
 
@@ -204,6 +207,21 @@ export default function BattlePage() {
     setAnimatingTurnIdx(0);
     setAnimSubPhase('move_announce');
     setIsAnimating(true);
+    setShowSwitchPanel(false);
+  };
+
+  const handleSwitch = (teamIdx: number) => {
+    if (!battleState || isAnimating || battleState.phase === 'finished') return;
+    if (teamIdx === battleState.playerIdx) return;
+
+    const turnLogs = executeSwitchTurn(battleState, teamIdx);
+    setBattleState({ ...battleState });
+    setCurrentTurnLogs(turnLogs);
+    setAllTurnLogs(prev => [...prev, ...turnLogs]);
+    setAnimatingTurnIdx(0);
+    setAnimSubPhase('move_announce');
+    setIsAnimating(true);
+    setShowSwitchPanel(false);
   };
 
   const finishBattle = () => {
@@ -706,51 +724,118 @@ export default function BattlePage() {
             </AnimatePresence>
           </div>
 
-          {/* Move Selection UI */}
+          {/* Action Selection UI */}
           {!isAnimating && battleState.phase !== 'finished' && player && (
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="grid grid-cols-2 gap-2 mb-4"
-            >
-              {playerMoves.map((move, i) => {
-                const effInfo = getEffLabel(move);
-                const typeColor = TYPE_COLORS[move.type] || TYPE_COLORS.normal;
-                return (
-                  <motion.button
-                    key={move.name}
-                    initial={{ opacity: 0, scale: 0.9 }}
-                    animate={{ opacity: 1, scale: 1 }}
-                    transition={{ delay: i * 0.05 }}
-                    whileTap={{ scale: 0.95 }}
-                    onClick={() => handleMoveSelect(move)}
-                    className={`p-3 rounded-xl border text-left transition-all active:scale-95 ${typeColor}`}
+            <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
+              {/* Toggle between moves and switch */}
+              {battleState.playerTeam.filter(p => p.currentHp > 0).length > 1 && (
+                <div className="flex gap-2 mb-2">
+                  <button
+                    onClick={() => setShowSwitchPanel(false)}
+                    className={`flex-1 py-1.5 rounded-lg text-[11px] font-semibold transition-colors ${!showSwitchPanel ? 'bg-primary/20 text-primary border border-primary/30' : 'bg-muted/50 text-muted-foreground'}`}
                   >
-                    <div className="flex items-center gap-1.5 mb-1">
-                      <span className="text-sm">{move.emoji}</span>
-                      <span className="text-xs font-bold text-foreground">{move.name}</span>
-                    </div>
-                    <div className="flex items-center gap-2 text-[9px]">
-                      <span className="text-muted-foreground">위력 {move.power}</span>
-                      <span className="text-muted-foreground">명중 {move.accuracy}</span>
-                    </div>
-                    {effInfo && (
-                      <p className={`text-[9px] font-bold mt-1 ${effInfo.color}`}>{effInfo.label}</p>
-                    )}
-                    {move.effect && (
-                      <p className="text-[8px] text-accent mt-0.5">
-                        {move.effect === 'burn' && '🔥 화상'}
-                        {move.effect === 'freeze' && '❄️ 빙결'}
-                        {move.effect === 'paralyze' && '⚡ 마비'}
-                        {move.effect === 'heal' && '💚 흡수'}
-                        {move.effect === 'boost_atk' && '⬆️ 공격↑'}
-                        {move.effect === 'lower_def' && '⬇️ 방어↓'}
-                        {' '}{move.effectChance}%
-                      </p>
-                    )}
-                  </motion.button>
-                );
-              })}
+                    ⚔️ 기술
+                  </button>
+                  <button
+                    onClick={() => setShowSwitchPanel(true)}
+                    className={`flex-1 py-1.5 rounded-lg text-[11px] font-semibold transition-colors ${showSwitchPanel ? 'bg-secondary/20 text-secondary border border-secondary/30' : 'bg-muted/50 text-muted-foreground'}`}
+                  >
+                    🔄 교체
+                  </button>
+                </div>
+              )}
+
+              <AnimatePresence mode="wait">
+                {!showSwitchPanel ? (
+                  <motion.div key="moves" initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="grid grid-cols-2 gap-2 mb-4">
+                    {playerMoves.map((move, i) => {
+                      const effInfo = getEffLabel(move);
+                      const typeColor = TYPE_COLORS[move.type] || TYPE_COLORS.normal;
+                      return (
+                        <motion.button
+                          key={move.name}
+                          initial={{ opacity: 0, scale: 0.9 }}
+                          animate={{ opacity: 1, scale: 1 }}
+                          transition={{ delay: i * 0.05 }}
+                          whileTap={{ scale: 0.95 }}
+                          onClick={() => handleMoveSelect(move)}
+                          className={`p-3 rounded-xl border text-left transition-all active:scale-95 ${typeColor}`}
+                        >
+                          <div className="flex items-center gap-1.5 mb-1">
+                            <span className="text-sm">{move.emoji}</span>
+                            <span className="text-xs font-bold text-foreground">{move.name}</span>
+                          </div>
+                          <div className="flex items-center gap-2 text-[9px]">
+                            <span className="text-muted-foreground">위력 {move.power}</span>
+                            <span className="text-muted-foreground">명중 {move.accuracy}</span>
+                          </div>
+                          {effInfo && (
+                            <p className={`text-[9px] font-bold mt-1 ${effInfo.color}`}>{effInfo.label}</p>
+                          )}
+                          {move.effect && (
+                            <p className="text-[8px] text-accent mt-0.5">
+                              {move.effect === 'burn' && '🔥 화상'}
+                              {move.effect === 'freeze' && '❄️ 빙결'}
+                              {move.effect === 'paralyze' && '⚡ 마비'}
+                              {move.effect === 'heal' && '💚 흡수'}
+                              {move.effect === 'boost_atk' && '⬆️ 공격↑'}
+                              {move.effect === 'lower_def' && '⬇️ 방어↓'}
+                              {' '}{move.effectChance}%
+                            </p>
+                          )}
+                        </motion.button>
+                      );
+                    })}
+                  </motion.div>
+                ) : (
+                  <motion.div key="switch" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 20 }} className="space-y-2 mb-4">
+                    <p className="text-[10px] text-muted-foreground">⚠️ 교체 시 상대가 먼저 공격합니다</p>
+                    {battleState.playerTeam.map((p, idx) => {
+                      const isActive = idx === battleState.playerIdx;
+                      const isFainted = p.currentHp <= 0;
+                      const hpRatio = p.currentHp / p.maxHp;
+                      return (
+                        <motion.button
+                          key={p.uid}
+                          whileTap={!isActive && !isFainted ? { scale: 0.97 } : {}}
+                          onClick={() => !isActive && !isFainted && handleSwitch(idx)}
+                          disabled={isActive || isFainted}
+                          className={`w-full flex items-center gap-3 p-3 rounded-xl border transition-colors text-left ${
+                            isActive ? 'border-primary/40 bg-primary/10 opacity-60' :
+                            isFainted ? 'opacity-30 border-muted' :
+                            'border-border/50 bg-card/80 hover:border-secondary/40'
+                          }`}
+                        >
+                          <img src={p.spriteUrl} alt={p.name} className="w-10 h-10 object-contain" style={{ imageRendering: 'pixelated' }} />
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs font-bold text-foreground">{p.nickname || p.name}</span>
+                              <span className="text-[10px] text-muted-foreground">Lv.{p.level}</span>
+                              {isActive && <span className="text-[8px] px-1.5 py-0.5 rounded-full bg-primary/20 text-primary font-semibold">배틀 중</span>}
+                              {isFainted && <span className="text-[8px] px-1.5 py-0.5 rounded-full bg-destructive/20 text-destructive font-semibold">기절</span>}
+                            </div>
+                            <div className="h-1.5 rounded-full bg-muted overflow-hidden mt-1">
+                              <div
+                                className="h-full rounded-full transition-all"
+                                style={{
+                                  width: `${Math.max(0, hpRatio * 100)}%`,
+                                  background: hpRatio > 0.5 ? 'hsl(var(--heal-green))' : hpRatio > 0.2 ? 'hsl(var(--amber))' : 'hsl(var(--destructive))',
+                                }}
+                              />
+                            </div>
+                            <div className="flex gap-1 mt-1">
+                              {p.types.map(t => (
+                                <span key={t} className="text-[8px] px-1 py-0.5 rounded bg-muted text-muted-foreground capitalize">{t}</span>
+                              ))}
+                            </div>
+                          </div>
+                          <p className="text-[9px] text-muted-foreground whitespace-nowrap">{p.currentHp}/{p.maxHp}</p>
+                        </motion.button>
+                      );
+                    })}
+                  </motion.div>
+                )}
+              </AnimatePresence>
             </motion.div>
           )}
 
