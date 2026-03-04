@@ -14,7 +14,453 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      battle_records: {
+        Row: {
+          battle_date: string
+          battle_id: string
+          coins_earned: number
+          created_at: string
+          exp_earned: number
+          id: string
+          opponent_name: string
+          result: string
+          user_id: string
+        }
+        Insert: {
+          battle_date: string
+          battle_id: string
+          coins_earned?: number
+          created_at?: string
+          exp_earned?: number
+          id?: string
+          opponent_name: string
+          result: string
+          user_id: string
+        }
+        Update: {
+          battle_date?: string
+          battle_id?: string
+          coins_earned?: number
+          created_at?: string
+          exp_earned?: number
+          id?: string
+          opponent_name?: string
+          result?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      catch_quests: {
+        Row: {
+          active_quests: Json
+          completed_count: number
+          created_at: string
+          failed_count: number
+          id: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          active_quests?: Json
+          completed_count?: number
+          created_at?: string
+          failed_count?: number
+          id?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          active_quests?: Json
+          completed_count?: number
+          created_at?: string
+          failed_count?: number
+          id?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      collections: {
+        Row: {
+          coins: number
+          created_at: string
+          encountered_species_ids: number[]
+          id: string
+          seen_species_ids: number[]
+          starter_chosen: boolean
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          coins?: number
+          created_at?: string
+          encountered_species_ids?: number[]
+          id?: string
+          seen_species_ids?: number[]
+          starter_chosen?: boolean
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          coins?: number
+          created_at?: string
+          encountered_species_ids?: number[]
+          id?: string
+          seen_species_ids?: number[]
+          starter_chosen?: boolean
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      inventory: {
+        Row: {
+          created_at: string
+          id: string
+          items: Json
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          items?: Json
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          items?: Json
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      legendary_state: {
+        Row: {
+          caught: number[]
+          created_at: string
+          encounters: number
+          id: string
+          last_encounter_date: string | null
+          updated_at: string
+          user_id: string
+          weekly_goal_streak_count: number
+        }
+        Insert: {
+          caught?: number[]
+          created_at?: string
+          encounters?: number
+          id?: string
+          last_encounter_date?: string | null
+          updated_at?: string
+          user_id: string
+          weekly_goal_streak_count?: number
+        }
+        Update: {
+          caught?: number[]
+          created_at?: string
+          encounters?: number
+          id?: string
+          last_encounter_date?: string | null
+          updated_at?: string
+          user_id?: string
+          weekly_goal_streak_count?: number
+        }
+        Relationships: []
+      }
+      owned_pokemon: {
+        Row: {
+          acquired_date: string
+          acquired_method: string
+          created_at: string
+          friendship: number
+          id: string
+          is_in_party: boolean
+          level: number
+          nickname: string | null
+          species_id: number
+          uid: string
+          user_id: string
+        }
+        Insert: {
+          acquired_date?: string
+          acquired_method?: string
+          created_at?: string
+          friendship?: number
+          id?: string
+          is_in_party?: boolean
+          level?: number
+          nickname?: string | null
+          species_id: number
+          uid: string
+          user_id: string
+        }
+        Update: {
+          acquired_date?: string
+          acquired_method?: string
+          created_at?: string
+          friendship?: number
+          id?: string
+          is_in_party?: boolean
+          level?: number
+          nickname?: string | null
+          species_id?: number
+          uid?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      pets: {
+        Row: {
+          created_at: string
+          exp: number
+          food_count: number
+          happiness: number
+          hp: number
+          id: string
+          last_hp_decay: string | null
+          level: number
+          max_hp: number
+          name: string
+          stage: string
+          total_food_collected: number
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          exp?: number
+          food_count?: number
+          happiness?: number
+          hp?: number
+          id?: string
+          last_hp_decay?: string | null
+          level?: number
+          max_hp?: number
+          name?: string
+          stage?: string
+          total_food_collected?: number
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          exp?: number
+          food_count?: number
+          happiness?: number
+          hp?: number
+          id?: string
+          last_hp_decay?: string | null
+          level?: number
+          max_hp?: number
+          name?: string
+          stage?: string
+          total_food_collected?: number
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      pokemon_eggs: {
+        Row: {
+          created_at: string
+          distance_required: number
+          distance_walked: number
+          egg_id: string
+          hatched: boolean
+          hatched_species_id: number | null
+          id: string
+          rarity: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          distance_required?: number
+          distance_walked?: number
+          egg_id: string
+          hatched?: boolean
+          hatched_species_id?: number | null
+          id?: string
+          rarity?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          distance_required?: number
+          distance_walked?: number
+          egg_id?: string
+          hatched?: boolean
+          hatched_species_id?: number | null
+          id?: string
+          rarity?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      pokemon_health: {
+        Row: {
+          created_at: string
+          id: string
+          injuries: Json
+          last_heal_all_at: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          injuries?: Json
+          last_heal_all_at?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          injuries?: Json
+          last_heal_all_at?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      profiles: {
+        Row: {
+          consecutive_login_days: number
+          created_at: string
+          dark_mode: boolean
+          id: string
+          last_completed_date: string | null
+          last_login_date: string | null
+          name: string
+          notifications_enabled: boolean
+          off_work_time: string
+          streak: number
+          updated_at: string
+        }
+        Insert: {
+          consecutive_login_days?: number
+          created_at?: string
+          dark_mode?: boolean
+          id: string
+          last_completed_date?: string | null
+          last_login_date?: string | null
+          name?: string
+          notifications_enabled?: boolean
+          off_work_time?: string
+          streak?: number
+          updated_at?: string
+        }
+        Update: {
+          consecutive_login_days?: number
+          created_at?: string
+          dark_mode?: boolean
+          id?: string
+          last_completed_date?: string | null
+          last_login_date?: string | null
+          name?: string
+          notifications_enabled?: boolean
+          off_work_time?: string
+          streak?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      running_sessions: {
+        Row: {
+          calories_burned: number
+          created_at: string
+          distance_km: number
+          duration_seconds: number
+          end_time: string
+          id: string
+          pace_min_per_km: number
+          reward_granted: boolean
+          route: Json
+          session_date: string
+          session_id: string
+          start_time: string
+          user_id: string
+        }
+        Insert: {
+          calories_burned?: number
+          created_at?: string
+          distance_km?: number
+          duration_seconds?: number
+          end_time: string
+          id?: string
+          pace_min_per_km?: number
+          reward_granted?: boolean
+          route?: Json
+          session_date: string
+          session_id: string
+          start_time: string
+          user_id: string
+        }
+        Update: {
+          calories_burned?: number
+          created_at?: string
+          distance_km?: number
+          duration_seconds?: number
+          end_time?: string
+          id?: string
+          pace_min_per_km?: number
+          reward_granted?: boolean
+          route?: Json
+          session_date?: string
+          session_id?: string
+          start_time?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      running_stats: {
+        Row: {
+          best_pace_min_per_km: number | null
+          challenges: Json
+          created_at: string
+          current_streak: number
+          goals: Json
+          id: string
+          longest_run_km: number
+          total_distance_km: number
+          total_duration_seconds: number
+          total_sessions: number
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          best_pace_min_per_km?: number | null
+          challenges?: Json
+          created_at?: string
+          current_streak?: number
+          goals?: Json
+          id?: string
+          longest_run_km?: number
+          total_distance_km?: number
+          total_duration_seconds?: number
+          total_sessions?: number
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          best_pace_min_per_km?: number | null
+          challenges?: Json
+          created_at?: string
+          current_streak?: number
+          goals?: Json
+          id?: string
+          longest_run_km?: number
+          total_distance_km?: number
+          total_duration_seconds?: number
+          total_sessions?: number
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
