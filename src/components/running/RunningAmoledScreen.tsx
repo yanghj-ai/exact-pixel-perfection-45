@@ -15,6 +15,9 @@ interface RunningAmoledScreenProps {
   onPause: () => void;
   onResume: () => void;
   onStop: () => void;
+  legendaryMissionName?: string;
+  legendaryMissionTargetKm?: number;
+  legendaryMissionProgress?: number;
 }
 
 export default function RunningAmoledScreen({
@@ -28,6 +31,9 @@ export default function RunningAmoledScreen({
   onPause,
   onResume,
   onStop,
+  legendaryMissionName,
+  legendaryMissionTargetKm,
+  legendaryMissionProgress,
 }: RunningAmoledScreenProps) {
   const [isLocked, setIsLocked] = useState(true);
   const [unlockProgress, setUnlockProgress] = useState(0);
@@ -114,6 +120,25 @@ export default function RunningAmoledScreen({
           {pace ? formatPace(pace) : "-'--\""}
           <span className="text-white/30 text-lg ml-1">/km</span>
         </p>
+
+        {/* Legendary mission progress */}
+        {legendaryMissionName && legendaryMissionTargetKm && (
+          <div className="mt-6 w-full max-w-xs px-4">
+            <div className="flex items-center justify-between mb-1.5">
+              <span className="text-white/50 text-xs">{legendaryMissionName} 미션</span>
+              <span className="text-white/70 text-xs font-bold tabular-nums">
+                {distanceKm.toFixed(1)}/{legendaryMissionTargetKm}km
+              </span>
+            </div>
+            <div className="h-1.5 w-full rounded-full bg-white/10 overflow-hidden">
+              <motion.div
+                className="h-full rounded-full bg-white/40"
+                initial={false}
+                animate={{ width: `${Math.min(100, (legendaryMissionProgress ?? 0))}%` }}
+              />
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Bottom info bar */}
