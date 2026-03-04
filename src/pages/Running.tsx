@@ -19,8 +19,8 @@ import { getPokemonById } from '@/lib/pokemon-registry';
 import { getPet, grantRewards } from '@/lib/pet';
 import type { LevelUpResult } from '@/lib/pet';
 import {
-  checkLegendaryEncounterConditions, checkSpecialEventConditions,
-  checkMissionComplete, getMissionProgress, recordLegendaryCatch, recordSpecialEventCatch,
+  checkLegendaryEncounterConditions,
+  checkMissionComplete, getMissionProgress, recordLegendaryCatch,
   type LegendaryEncounter,
 } from '@/lib/legendary';
 import {
@@ -185,15 +185,18 @@ export default function RunningPage() {
       const availableLegendaries = checkLegendaryEncounterConditions();
       if (availableLegendaries.length > 0) {
         const def = availableLegendaries[0];
-        setLegendaryEncounter({ definition: def, mission: def.mission, startedAt: Date.now(), missionActive: true });
-        toast(`🌟 전설의 포켓몬 ${def.name} 조우!`, { description: def.mission.description, duration: 6000 });
-      }
-      const availableEvents = checkSpecialEventConditions();
-      for (const event of availableEvents) {
-        catchPokemon(event.speciesId);
-        recordSpecialEventCatch(event.speciesId);
-        setSpecialOverlay({ show: true, speciesId: event.speciesId, type: 'event' });
-        break;
+        // 스토리 메시지 표시
+        toast(`🌟 ${def.name} 조우!`, { description: def.storyIntro, duration: 8000 });
+        
+        if (def.autoCatch) {
+          // 뮤: 자동 포획
+          catchPokemon(def.speciesId);
+          recordLegendaryCatch(def.speciesId);
+          setSpecialOverlay({ show: true, speciesId: def.speciesId, type: 'legendary' });
+          toast(`✨ ${def.storyOutro}`, { duration: 8000 });
+        } else {
+          setLegendaryEncounter({ definition: def, mission: def.mission, startedAt: Date.now(), missionActive: true });
+        }
       }
     }
   }, [runState]);
@@ -208,7 +211,7 @@ export default function RunningPage() {
       catchPokemon(legendaryEncounter.definition.speciesId);
       recordLegendaryCatch(legendaryEncounter.definition.speciesId);
       setSpecialOverlay({ show: true, speciesId: legendaryEncounter.definition.speciesId, type: 'legendary' });
-      toast(`🌟 ${legendaryEncounter.definition.name}을(를) 포획했다!`, { duration: 8000 });
+      toast(`🌟 ${legendaryEncounter.definition.storyOutro}`, { duration: 8000 });
     }
   }, [legendaryEncounter, currentDistance, elapsed, legendaryCaught, currentPace]);
 

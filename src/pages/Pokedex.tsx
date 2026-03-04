@@ -3,7 +3,8 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { getAllPokemon, getPokemonById, getEvolutionChain, RARITY_CONFIG, TYPE_CONFIG, type PokemonSpecies, type PokemonType } from '@/lib/pokemon-registry';
 import { getOwnedSpeciesIds, getSeenSpeciesIds, getCollection, getFriendshipLevel } from '@/lib/collection';
 import { getAllLearnableMoves } from '@/lib/battle-moves';
-import { getAllLegendaryDefs, getAllSpecialEvents } from '@/lib/legendary';
+import { getAllLegendaryDefs, LEGENDARY_DEFS } from '@/lib/legendary';
+import { isChallengeCompleted, CHALLENGE_DEFS } from '@/lib/challenge';
 import { getGradeInfo, type PokemonGrade } from '@/lib/pokemon-grade';
 import { getPokemonGrade, getGradeForPokemon } from '@/lib/spawn-data';
 import { Search, ChevronRight, ArrowLeft, X, Swords, Sparkles, MapPin } from 'lucide-react';
@@ -451,40 +452,42 @@ export default function Pokedex() {
                        {/* Unknown — show hint for legendary/event */}
                        {!seen && !owned && (() => {
                          const legendaryDefs = getAllLegendaryDefs();
-                         const specialEvents = getAllSpecialEvents();
                          const legendaryDef = legendaryDefs.find(d => d.speciesId === selectedPokemon.id);
-                         const specialEvent = specialEvents.find(e => e.speciesId === selectedPokemon.id);
 
                          if (legendaryDef) {
+                           const challengeStatus = legendaryDef.speciesId === 151
+                             ? []
+                             : legendaryDef.requiredChallenges.map(id => ({
+                                 id,
+                                 name: CHALLENGE_DEFS.find(d => d.id === id)?.name ?? id,
+                                 done: isChallengeCompleted(id),
+                               }));
+
                            return (
                              <div className="text-center py-4 space-y-2">
                                <span className="text-3xl mb-2 block">🌟</span>
                                <p className="text-sm font-semibold text-foreground">전설의 포켓몬</p>
-                               <div className="glass-card p-3 text-left">
+                               <div className="glass-card p-3 text-left space-y-2">
                                  <div className="flex items-center gap-1.5 mb-1">
                                    <Sparkles size={12} className="text-secondary" />
-                                   <span className="text-[10px] font-bold text-secondary">조우 조건</span>
+                                   <span className="text-[10px] font-bold text-secondary">해금 조건</span>
                                  </div>
                                  <p className="text-xs text-muted-foreground">{legendaryDef.encounterCondition}</p>
+                                 {challengeStatus.length > 0 && (
+                                   <div className="flex flex-wrap gap-1 mt-1">
+                                     {challengeStatus.map(cs => (
+                                       <span key={cs.id} className={`text-[9px] px-1.5 py-0.5 rounded-full ${cs.done ? 'bg-secondary/20 text-secondary' : 'bg-muted text-muted-foreground'}`}>
+                                         {cs.done ? '✅' : '🔒'} {cs.name}
+                                       </span>
+                                     ))}
+                                   </div>
+                                 )}
+                                 <div className="mt-2 pt-2 border-t border-border/30">
+                                   <p className="text-[10px] text-muted-foreground font-semibold">포획 미션</p>
+                                   <p className="text-xs text-foreground">{legendaryDef.mission.label}: {legendaryDef.mission.description}</p>
+                                 </div>
                                </div>
                                <p className="text-xs text-muted-foreground/70 italic mt-2">💬 "{legendaryDef.encounterHint}"</p>
-                             </div>
-                           );
-                         }
-
-                         if (specialEvent) {
-                           return (
-                             <div className="text-center py-4 space-y-2">
-                               <span className="text-3xl mb-2 block">{specialEvent.emoji}</span>
-                               <p className="text-sm font-semibold text-foreground">특수 이벤트 포켓몬</p>
-                               <div className="glass-card p-3 text-left">
-                                 <div className="flex items-center gap-1.5 mb-1">
-                                   <Sparkles size={12} className="text-accent" />
-                                   <span className="text-[10px] font-bold text-accent">조우 조건</span>
-                                 </div>
-                                 <p className="text-xs text-muted-foreground">{specialEvent.description}</p>
-                               </div>
-                               <p className="text-xs text-muted-foreground/70 italic mt-2">💬 "{specialEvent.hint}"</p>
                              </div>
                            );
                          }
