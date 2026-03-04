@@ -19,6 +19,7 @@ import Party from "./pages/Party";
 import Battle from "./pages/Battle";
 import Ranking from "./pages/Ranking";
 import Shop from "./pages/Shop";
+import Challenges from "./pages/Challenges";
 import Login from "./pages/Login";
 import NotFound from "./pages/NotFound";
 
@@ -95,6 +96,7 @@ function AppRoutes() {
         <Route path="/battle" element={<Battle />} />
         <Route path="/ranking" element={<Ranking />} />
         <Route path="/shop" element={<Shop />} />
+        <Route path="/challenges" element={<Challenges />} />
         <Route path="/settings" element={<Settings />} />
         <Route path="*" element={<NotFound />} />
       </Routes>
