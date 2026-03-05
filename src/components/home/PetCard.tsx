@@ -17,9 +17,11 @@ interface PetCardProps {
   conditionLevel: ConditionLevel;
   friendship: number;
   onDialogueChange: (d: string) => void;
+  onConditionTap?: () => void;
+  onPokemonTap?: () => void;
 }
 
-export default function PetCard({ pet, leadPokemon, leadSpecies, dialogue, mood, condition, conditionLevel, friendship, onDialogueChange }: PetCardProps) {
+export default function PetCard({ pet, leadPokemon, leadSpecies, dialogue, mood, condition, conditionLevel, friendship, onDialogueChange, onConditionTap, onPokemonTap }: PetCardProps) {
   const requiredExp = getRequiredExp(pet.level);
   const expProgress = (pet.exp / requiredExp) * 100;
 
@@ -62,7 +64,7 @@ export default function PetCard({ pet, leadPokemon, leadSpecies, dialogue, mood,
           <motion.div
             animate={{ y: [0, -6, 0] }}
             transition={{ duration: 2.5, repeat: Infinity, ease: 'easeInOut' }}
-            onClick={() => onDialogueChange(getMoodDialogue(mood))}
+            onClick={() => { onPokemonTap?.(); }}
             className="cursor-pointer"
           >
             <img
@@ -96,14 +98,14 @@ export default function PetCard({ pet, leadPokemon, leadSpecies, dialogue, mood,
 
       {/* Condition & EXP bars */}
       <div className="px-5 pb-2 space-y-1.5">
-        {/* Condition bar */}
-        <div>
+        {/* Condition bar — tappable */}
+        <button onClick={onConditionTap} className="w-full text-left">
           <div className="flex items-center justify-between mb-0.5">
             <span className="text-[10px] text-muted-foreground font-medium flex items-center gap-1">
               {getConditionEmoji(conditionLevel)} 컨디션
               <span className="text-[9px] px-1 py-0.5 rounded bg-muted">{getConditionLabel(conditionLevel)}</span>
             </span>
-            <span className="text-[10px] text-muted-foreground">{condition}/100</span>
+            <span className="text-[10px] text-muted-foreground">{condition}/100 ›</span>
           </div>
           <div className="h-2 w-full rounded-full bg-muted overflow-hidden">
             <motion.div
@@ -114,7 +116,7 @@ export default function PetCard({ pet, leadPokemon, leadSpecies, dialogue, mood,
               transition={{ duration: 0.5 }}
             />
           </div>
-        </div>
+        </button>
 
         {/* EXP bar */}
         <div>

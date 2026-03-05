@@ -1,10 +1,11 @@
 import { useState } from 'react';
-import { motion } from 'framer-motion';
-import { ArrowLeft, Trophy, Flame, TrendingUp, Footprints } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { ArrowLeft, Trophy, Flame, TrendingUp, Footprints, MapPin, X } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { getRunningStreak, getRunRecords, getDailyStepHistory, getRunDates, type RunRecord } from '@/lib/running-streak';
 import { formatDuration, formatPace } from '@/lib/running';
 import { getPokemonById } from '@/lib/pokemon-registry';
+import RunningMap from '@/components/RunningMap';
 import BottomNav from '@/components/BottomNav';
 import DebugPanel from '@/components/DebugPanel';
 
@@ -111,8 +112,9 @@ function WeeklyStepChart() {
   );
 }
 
-function RunRecordCard({ record, index }: { record: RunRecord; index: number }) {
+function RunRecordCard({ record, index, onShowMap }: { record: RunRecord; index: number; onShowMap: (r: RunRecord) => void }) {
   const species = getPokemonById(record.companionSpeciesId);
+  const hasRoute = record.route && record.route.length > 1;
   return (
     <motion.div
       initial={{ opacity: 0, y: 10 }}
@@ -129,7 +131,14 @@ function RunRecordCard({ record, index }: { record: RunRecord; index: number }) 
             {new Date(record.date + 'T12:00:00').toLocaleDateString('ko-KR', { month: 'short', day: 'numeric', weekday: 'short' })}
           </span>
         </div>
-        <span className="text-[10px] text-muted-foreground">{record.companionName}</span>
+        <div className="flex items-center gap-2">
+          {hasRoute && (
+            <button onClick={() => onShowMap(record)} className="text-[10px] text-primary flex items-center gap-0.5">
+              <MapPin size={10} /> 경로
+            </button>
+          )}
+          <span className="text-[10px] text-muted-foreground">{record.companionName}</span>
+        </div>
       </div>
       <div className="grid grid-cols-4 gap-2 text-center">
         <div>
@@ -149,6 +158,18 @@ function RunRecordCard({ record, index }: { record: RunRecord; index: number }) 
           <p className="text-[9px] text-muted-foreground">페이스</p>
         </div>
       </div>
+      {/* Encounters */}
+      {record.encounters && record.encounters.length > 0 && (
+        <div className="mt-2 flex items-center gap-1 flex-wrap">
+          <span className="text-[9px] text-muted-foreground">조우:</span>
+          {record.encounters.map((enc, ei) => {
+            const sp = getPokemonById(enc.speciesId);
+            return sp ? (
+              <img key={ei} src={sp.spriteUrl} alt={sp.name} className="w-4 h-4 object-contain" style={{ imageRendering: 'pixelated' }} title={sp.name} />
+            ) : null;
+          })}
+        </div>
+      )}
     </motion.div>
   );
 }
@@ -157,6 +178,7 @@ export default function RunningHistory() {
   const navigate = useNavigate();
   const streak = getRunningStreak();
   const records = getRunRecords();
+  const [mapRecord, setMapRecord] = useState<RunRecord | null>(null);
 
   const totalSteps = records.reduce((s, r) => s + r.steps, 0);
   const totalDistance = records.reduce((s, r) => s + r.distanceKm, 0);
@@ -197,10 +219,7 @@ export default function RunningHistory() {
           </div>
         </div>
 
-        {/* Streak Calendar */}
         <StreakCalendar />
-
-        {/* Weekly Chart */}
         <WeeklyStepChart />
 
         {/* Recent Runs */}
@@ -216,13 +235,61 @@ export default function RunningHistory() {
             </div>
           ) : (
             records.slice(0, 20).map((r, i) => (
-              <RunRecordCard key={`${r.date}-${i}`} record={r} index={i} />
+              <RunRecordCard key={`${r.date}-${i}`} record={r} index={i} onShowMap={setMapRecord} />
             ))
           )}
         </div>
         <DebugPanel />
       </div>
       <BottomNav />
+
+      {/* GPS Route Map Overlay */}
+      <AnimatePresence>
+        {mapRecord && mapRecord.route && mapRecord.route.length > 1 && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4"
+            onClick={() => setMapRecord(null)}
+          >
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              className="w-full max-w-md bg-card rounded-2xl overflow-hidden"
+              onClick={e => e.stopPropagation()}
+            >
+              <div className="flex items-center justify-between p-3 border-b border-border/30">
+                <span className="text-sm font-bold text-foreground">
+                  {new Date(mapRecord.date + 'T12:00:00').toLocaleDateString('ko-KR', { month: 'long', day: 'numeric' })} 경로
+                </span>
+                <button onClick={() => setMapRecord(null)} className="p-1 rounded-full hover:bg-muted">
+                  <X size={16} className="text-muted-foreground" />
+                </button>
+              </div>
+              <RunningMap
+                route={mapRecord.route.map(p => ({ lat: p.lat, lng: p.lng, timestamp: p.timestamp ?? 0 }))}
+                className="h-64"
+              />
+              <div className="grid grid-cols-3 gap-2 p-3 text-center text-xs">
+                <div>
+                  <p className="font-bold text-primary">{mapRecord.distanceKm.toFixed(2)} km</p>
+                  <p className="text-[9px] text-muted-foreground">거리</p>
+                </div>
+                <div>
+                  <p className="font-bold text-foreground">{formatDuration(mapRecord.durationSec)}</p>
+                  <p className="text-[9px] text-muted-foreground">시간</p>
+                </div>
+                <div>
+                  <p className="font-bold text-secondary">{mapRecord.paceMinPerKm ? formatPace(mapRecord.paceMinPerKm) : '-'}</p>
+                  <p className="text-[9px] text-muted-foreground">페이스</p>
+                </div>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

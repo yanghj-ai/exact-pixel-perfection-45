@@ -17,6 +17,8 @@ import BottomNav from '@/components/BottomNav';
 import LevelUpOverlay from '@/components/LevelUpOverlay';
 import AttendanceBonus from '@/components/AttendanceBonus';
 import DebugPanel from '@/components/DebugPanel';
+import ConditionDetailSheet from '@/components/home/ConditionDetailSheet';
+import PokemonDetailSheet from '@/components/home/PokemonDetailSheet';
 
 // Sub-components
 import PetCard from '@/components/home/PetCard';
@@ -47,6 +49,8 @@ export default function Home() {
   const [levelUpResult, setLevelUpResult] = useState<LevelUpResult | null>(null);
   const [showAttendance, setShowAttendance] = useState(false);
   const [attendanceData, setAttendanceData] = useState<{ consecutiveDays: number; bonusFood: number; bonusExp: number } | null>(null);
+  const [showConditionSheet, setShowConditionSheet] = useState(false);
+  const [showPokemonDetail, setShowPokemonDetail] = useState(false);
 
   useEffect(() => {
     if (!profile.onboardingComplete) {
@@ -120,6 +124,8 @@ export default function Home() {
           conditionLevel={condLevel}
           friendship={bond.friendship}
           onDialogueChange={setDialogue}
+          onConditionTap={() => setShowConditionSheet(true)}
+          onPokemonTap={() => { if (leadPokemon) setShowPokemonDetail(true); }}
         />
 
         <PartyPreview party={party} />
@@ -141,6 +147,8 @@ export default function Home() {
       {attendanceData && (
         <AttendanceBonus show={showAttendance} consecutiveDays={attendanceData.consecutiveDays} bonusFood={attendanceData.bonusFood} bonusExp={attendanceData.bonusExp} onClose={handleAttendanceClose} />
       )}
+      <ConditionDetailSheet open={showConditionSheet} onOpenChange={setShowConditionSheet} />
+      <PokemonDetailSheet pokemon={leadPokemon} species={leadSpecies} open={showPokemonDetail} onOpenChange={setShowPokemonDetail} />
     </div>
   );
 }
