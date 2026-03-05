@@ -169,15 +169,7 @@ export default function RunningAmoledScreen({
           })()}
         </div>
 
-        {/* Next multiplier tier hint */}
-        {(() => {
-          const next = getNextTier(distanceKm);
-          return next ? (
-            <p className="text-white/20 text-[10px] mt-2 tabular-nums">
-              {next.km}km 달성 시 ×{next.mult} 배율
-            </p>
-          ) : null;
-        })()}
+        {/* v9: 배율 수식 제거 — 달성 시에만 토스트로 표시 */}
 
         {/* Legendary mission progress */}
         {legendaryMissionName && legendaryMissionTargetKm && (

@@ -109,22 +109,23 @@ export default function RunningPage() {
               </div>
             </div>
             <div className="h-px bg-border" />
-            <div className="flex justify-center gap-6">
-              <div className="flex items-center gap-1.5">
-                <Flame size={16} className="text-destructive" />
-                <span className="text-sm font-semibold">{s.completedData.calories} kcal</span>
+            {s.completedData.calories > 0 && (
+              <div className="flex justify-center gap-6">
+                <div className="flex items-center gap-1.5">
+                  <Flame size={16} className="text-destructive" />
+                  <span className="text-sm font-semibold">{s.completedData.calories} kcal</span>
+                </div>
               </div>
-            </div>
+            )}
           </div>
 
-          {/* Auto-multiplier achievement */}
-          {s.completedData.goalAchieved && s.completedData.goalBonus > 1 && (
+          {/* v9 FIX #5: 배율 수식 제거 → 자연어 배지 */}
+          {s.completedData.distanceKm >= 1 && (
             <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} transition={{ delay: 0.3 }} className="glass-card p-3 mb-4 border border-secondary/30 text-center">
-              <span className="text-lg">{calculateAutoMultiplier(s.completedData.distanceKm, s.streak.currentStreak).emoji}</span>
+              <span className="text-lg">{s.completedData.distanceKm >= 10 ? '🏆' : s.completedData.distanceKm >= 5 ? '🔥' : s.completedData.distanceKm >= 3 ? '⚡' : '👟'}</span>
               <p className="text-sm font-bold text-secondary">
-                {calculateAutoMultiplier(s.completedData.distanceKm, s.streak.currentStreak).label}
+                {s.completedData.distanceKm >= 10 ? '10km 전설의 러너!' : s.completedData.distanceKm >= 5 ? '5km 완주 보너스!' : s.completedData.distanceKm >= 3 ? '3km 보너스 적용!' : '1km 달성 보너스!'}
               </p>
-              <p className="text-xs text-muted-foreground mt-0.5">보상 ×{s.completedData.goalBonus.toFixed(1)} 적용</p>
             </motion.div>
           )}
 
@@ -132,10 +133,9 @@ export default function RunningPage() {
           <div className="space-y-2 mb-4">
             {[
               { icon: '🏃', label: '거리', value: `${s.completedData.distanceKm.toFixed(2)} km`, delay: 0.4, bg: 'bg-muted/50' },
-              { icon: '⚡', label: 'EXP', value: `+${s.completedData.rewards.exp}`, delay: 0.55, bg: 'bg-primary/10' },
-              { icon: '🪙', label: '코인', value: `+${s.completedData.rewards.coins}`, delay: 0.7, bg: 'bg-secondary/10' },
-              { icon: '💚', label: '컨디션', value: `+${s.completedData.conditionRecovery}`, delay: 0.85, bg: 'bg-heal/10' },
-              { icon: '💕', label: '친밀도', value: `+${s.completedData.friendshipGain}`, delay: 1.0, bg: 'bg-accent/10' },
+              ...(s.completedData.rewards.exp > 0 ? [{ icon: '⚡', label: 'EXP', value: `+${s.completedData.rewards.exp}`, delay: 0.55, bg: 'bg-primary/10' }] : []),
+              ...(s.completedData.rewards.coins > 0 ? [{ icon: '🪙', label: '코인', value: `+${s.completedData.rewards.coins}`, delay: 0.7, bg: 'bg-secondary/10' }] : []),
+              ...(s.completedData.conditionRecovery > 0 ? [{ icon: '💚', label: '컨디션', value: `+${s.completedData.conditionRecovery}`, delay: 0.85, bg: 'bg-heal/10' }] : []),
             ].map(card => (
               <motion.div
                 key={card.label}
@@ -547,21 +547,6 @@ export default function RunningPage() {
         {/* Idle sections */}
         {s.runState === 'idle' && (
           <>
-            <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }} className="mt-6 glass-card p-4">
-              <p className="text-xs text-muted-foreground mb-2">🎯 자동 배율 시스템</p>
-              <div className="space-y-1.5 text-sm text-muted-foreground">
-                <div className="flex items-center justify-between"><span>👟 1km</span><span className="font-bold text-foreground">×1.1</span></div>
-                <div className="flex items-center justify-between"><span>⚡ 3km</span><span className="font-bold text-foreground">×1.3</span></div>
-                <div className="flex items-center justify-between"><span>🔥 5km</span><span className="font-bold text-foreground">×1.5</span></div>
-                <div className="flex items-center justify-between"><span>🏆 10km</span><span className="font-bold text-foreground">×2.0</span></div>
-                {s.streak.currentStreak >= 3 && (
-                  <div className="flex items-center justify-between border-t border-border/30 pt-1 mt-1">
-                    <span>🔥 {s.streak.currentStreak}일 연속 보너스</span>
-                    <span className="font-bold text-primary">+{s.streak.currentStreak >= 7 ? '0.3' : '0.15'}</span>
-                  </div>
-                )}
-              </div>
-            </motion.div>
             <LegendaryPreview />
           </>
         )}
