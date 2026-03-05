@@ -4,6 +4,8 @@ import { Lock, Unlock, Pause, Square } from 'lucide-react';
 import { formatDuration, formatPace } from '@/lib/running';
 import { getPokemonById } from '@/lib/pokemon-registry';
 import { calculateAutoMultiplier, getNextTier } from '@/lib/auto-multiplier';
+import { getConditionState } from '@/lib/pokemon-condition';
+import RunningCompanion from '@/components/running/RunningCompanion';
 
 interface RunningAmoledScreenProps {
   elapsed: number;
@@ -22,6 +24,8 @@ interface RunningAmoledScreenProps {
   streakDays?: number;
   estimatedExp?: number;
   estimatedCoins?: number;
+  companionDialogue?: string | null;
+  isEncountering?: boolean;
 }
 
 export default function RunningAmoledScreen({
@@ -41,6 +45,8 @@ export default function RunningAmoledScreen({
   streakDays = 0,
   estimatedExp = 0,
   estimatedCoins = 0,
+  companionDialogue = null,
+  isEncountering = false,
 }: RunningAmoledScreenProps) {
   const [isLocked, setIsLocked] = useState(true);
   const [unlockProgress, setUnlockProgress] = useState(0);
@@ -195,19 +201,20 @@ export default function RunningAmoledScreen({
 
       {/* Bottom info bar */}
       <div className="px-6 pb-6">
-        {/* Companion + encounter count */}
+        {/* Companion animation + encounter count */}
+        <div className="mb-4">
+          <RunningCompanion
+            species={companionSpecies}
+            currentPace={pace}
+            totalDistance={distanceKm}
+            condition={getConditionState().condition}
+            isEncountering={isEncountering}
+            dialogue={companionDialogue}
+            fallbackName={companionName}
+          />
+        </div>
         <div className="flex items-center justify-between mb-6">
-          <div className="flex items-center gap-2">
-            {companionSpecies && (
-              <img
-                src={companionSpecies.spriteUrl}
-                alt={companionName}
-                className="w-8 h-8 object-contain"
-                style={{ imageRendering: 'pixelated', filter: 'brightness(0.8)' }}
-              />
-            )}
-            <span className="text-white/50 text-sm">{companionName}</span>
-          </div>
+          <span className="text-white/50 text-sm">{companionName}</span>
           <div className="flex items-center gap-1.5">
             <span className="text-white/50 text-sm">🎮 포켓몬</span>
             <span className="text-white/80 text-sm font-bold tabular-nums">{encounterCount}마리</span>
