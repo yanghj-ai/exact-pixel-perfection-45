@@ -447,9 +447,8 @@ export function useRunningSession() {
     });
 
     const pace = currentPace;
-    const rewards = calculateRunRewards(finalSteps, pace, validation);
-
     const distKmForMult = Math.round(stepsToKm(finalSteps, true) * 100) / 100;
+    const rewards = calculateRunRewards(finalSteps, pace, validation, distKmForMult, !!partyLeader);
     const autoMult = calculateAutoMultiplier(distKmForMult, streak.currentStreak);
     const goalAchieved = autoMult.exp > 1;
     const goalBonus = autoMult.exp;

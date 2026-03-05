@@ -13,6 +13,8 @@ import { getCachedBattleRecords, setCachedBattleRecords, syncBattleRecordToDB, i
 import { getTodaySteps } from './pedometer';
 import { getRunningStreak } from './running-streak';
 import { getEffectiveMove, onSkillUsed, findMoveKey } from './skill-system';
+import { getConditionState, getConditionLevel } from './pokemon-condition';
+import { CRIT_BASE_RATE, CRIT_DAMAGE, CONDITION_BATTLE_MODIFIERS } from './constants';
 
 // Re-export BattleMove for convenience
 export type { BattleMove } from './battle-moves';
@@ -169,15 +171,26 @@ function applyRunningBuff(pokemon: BattlePokemon): BattlePokemon {
 
 // ─── Stat Calculation (공식 포켓몬 스탯 공식) ─────────────
 
-function computeBattleStats(owned: OwnedPokemon, species: PokemonSpecies, applyInjury: boolean = false): BattlePokemon {
+function computeBattleStats(owned: OwnedPokemon, species: PokemonSpecies, applyInjury: boolean = false, applyCondition: boolean = false): BattlePokemon {
   const base = species.baseStats;
   const lv = owned.level;
 
   // Official Pokemon stat formula (simplified, no IVs/EVs)
-  const maxHp = Math.floor(((base.hp * 2) * lv / 100) + 10 + lv);
-  const attack = Math.floor(((base.atk * 2) * lv / 100) + 5);
-  const defense = Math.floor(((base.def * 2) * lv / 100) + 5);
-  const speed = Math.floor(((base.spd * 2) * lv / 100) + 5);
+  let maxHp = Math.floor(((base.hp * 2) * lv / 100) + 10 + lv);
+  let attack = Math.floor(((base.atk * 2) * lv / 100) + 5);
+  let defense = Math.floor(((base.def * 2) * lv / 100) + 5);
+  let speed = Math.floor(((base.spd * 2) * lv / 100) + 5);
+
+  // FIX #5: 컨디션 → 배틀 스탯 보정 (v8)
+  if (applyCondition) {
+    const condState = getConditionState();
+    const condLevel = getConditionLevel(condState.condition);
+    const condMod = CONDITION_BATTLE_MODIFIERS[condLevel];
+    maxHp = Math.floor(maxHp * condMod.statMult);
+    attack = Math.floor(attack * condMod.statMult);
+    defense = Math.floor(defense * condMod.statMult);
+    speed = Math.floor(speed * condMod.statMult);
+  }
 
   // Apply injury: start with reduced HP
   const injuryRatio = applyInjury ? getEffectiveHpRatio(owned.uid) : 1;
@@ -212,7 +225,7 @@ export function buildBattleTeam(ownedPokemon: OwnedPokemon[]): BattlePokemon[] {
     .map(p => {
       const species = getPokemonById(p.speciesId);
       if (!species) return null;
-      const stats = computeBattleStats(p, species, true);
+      const stats = computeBattleStats(p, species, true, true); // applyCondition = true for player
       return applyRunningBuff(stats); // Apply running buff to player team
     })
     .filter(Boolean) as BattlePokemon[];
@@ -564,8 +577,13 @@ export function doAttack(attacker: BattlePokemon, defender: BattlePokemon, turn:
   }
 
   const effectiveness = getEffectiveness(bestMove.type, defender.types);
-  const critical = Math.random() < 0.1;
-  const critMult = critical ? 1.5 : 1;
+  // FIX #5: 크리 기본 6.25% + 컨디션 보정
+  const condState = getConditionState();
+  const condLevel = getConditionLevel(condState.condition);
+  const condCritBonus = isPlayerAttacking ? CONDITION_BATTLE_MODIFIERS[condLevel].critBonus : 0;
+  const critRate = Math.max(0, CRIT_BASE_RATE + condCritBonus);
+  const critical = Math.random() < critRate;
+  const critMult = critical ? CRIT_DAMAGE : 1;
   const stab = attacker.types.includes(bestMove.type) ? 1.5 : 1;
 
   // Status modifiers
