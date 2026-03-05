@@ -539,7 +539,7 @@ export function useRunningSession() {
         conditionRecovery: condResult.recovery,
       },
       // v9 FIX #6: GPS 경로 + 조우 기록 저장
-      route: gpsPoints.map(p => ({ lat: p.lat, lng: p.lng, timestamp: p.timestamp, pace: p.pace })),
+      route: gpsPoints.map(p => ({ lat: p.lat, lng: p.lng, timestamp: p.timestamp })),
       encounters: autoCollected.map(a => ({ speciesId: a.speciesId, grade: a.grade, distanceAtEncounter: a.distanceAtEncounter })),
     });
 
