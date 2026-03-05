@@ -13,8 +13,7 @@ export const MAX_LEVEL = 100;
 export const MAX_SKILL_SLOTS = 4;
 export const MAX_SKILL_LEVEL = 5;
 
-// ─── 친밀도/컨디션 ──────────────────────────────────────
-export const INTIMACY_MAX = 255;
+// ─── 컨디션 (v9: 친밀도 제거, 컨디션 단일 통합) ──────────
 export const CONDITION_MAX = 100;
 export const CONDITION_DAILY_DECAY = 10;
 
@@ -30,9 +29,6 @@ export const EXP_PER_STEP = 0.1;
 export const COIN_PER_STEP = 0.005;
 export const CONDITION_STEPS_PER_POINT = 100; // 100보당 +1
 export const CONDITION_DAILY_MAX_RECOVERY = 50;
-export const INTIMACY_STEPS_PER_GAIN = 500; // 500보당 +5
-export const INTIMACY_GAIN_PER_INTERVAL = 5;
-export const INTIMACY_DAILY_MAX = 100;
 
 // ─── 거리 배율 (v8 확정) ──────────────────────────────────
 export const DISTANCE_MULTIPLIER_TIERS = [
@@ -85,17 +81,17 @@ export const CONDITION_BATTLE_MODIFIERS = {
   perfect:   { statMult: 1.10, critBonus: 0.05 },
 } as const;
 
-// ─── 친밀도 → 배틀 보너스 ─────────────────────────────────
-export const INTIMACY_BATTLE_EXP_THRESHOLD = 200;
-export const INTIMACY_BATTLE_EXP_MULTIPLIER = 1.2;
+// ─── 컨디션 → 배틀 EXP 보너스 (v9: 친밀도 통합) ──────────
+export const CONDITION_BATTLE_EXP_THRESHOLD = 80;
+export const CONDITION_BATTLE_EXP_MULTIPLIER = 1.1;
 
 // ─── 진화 유형 ───────────────────────────────────────────
-export type EvolutionType = 'level' | 'stone' | 'intimacy' | 'story';
+export type EvolutionType = 'level' | 'stone' | 'condition' | 'story';
 
 export interface EvolutionCondition {
   level?: number;
   item?: string;
-  intimacy?: number;
+  condition?: number; // v9: 컨디션 80+ 유지 조건
   storyMission?: string;
 }
 

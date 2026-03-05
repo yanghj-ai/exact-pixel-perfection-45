@@ -155,10 +155,15 @@ export function useRunningSession() {
     const dist = stepsToKm(steps, true);
     const milestone = checkMultiplierMilestone(dist, multiplierShownRef.current);
     if (milestone) {
-      toast(`${milestone.emoji} ${milestone.label}`, {
-        description: `보상 배율 ×${milestone.mult} 적용!`,
-        duration: 4000,
-      });
+      // v9 FIX #5: 사용자 친화 토스트
+      const msgs: Record<number, { msg: string; dur: number }> = {
+        1: { msg: '🔥 1km 달성! 보상이 올라갑니다!', dur: 2000 },
+        3: { msg: '🔥🔥 3km 돌파! 보상 대폭 상승!', dur: 2500 },
+        5: { msg: '🏆 5km 완주! 최고 보상!', dur: 3000 },
+        10: { msg: '🌈 10km 전설의 러너! 보상 2배!', dur: 3000 },
+      };
+      const m = msgs[milestone.km] || { msg: `${milestone.emoji} ${milestone.label}`, dur: 3000 };
+      toast(m.msg, { duration: m.dur });
       if ('vibrate' in navigator) navigator.vibrate([200, 100, 200]);
     }
   }, [steps, runState]);
@@ -532,8 +537,10 @@ export function useRunningSession() {
         exp: rewards.exp,
         coins: rewards.coins,
         conditionRecovery: condResult.recovery,
-        friendshipGain: rewards.friendshipGain,
       },
+      // v9 FIX #6: GPS 경로 + 조우 기록 저장
+      route: gpsPoints.map(p => ({ lat: p.lat, lng: p.lng, timestamp: p.timestamp, pace: p.pace })),
+      encounters: autoCollected.map(a => ({ speciesId: a.speciesId, grade: a.grade, distanceAtEncounter: a.distanceAtEncounter })),
     });
 
     failAllActiveQuests();

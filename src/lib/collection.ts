@@ -382,14 +382,20 @@ export interface PartyExpResult {
 
 /** Grant EXP to all party Pokémon (from running, battles, etc.). Leader (party[0]) gets 1.5x bonus. */
 export function grantExpToParty(totalExp: number, leaderBonusMultiplier: number = 1.5): PartyExpResult[] {
+  // FIX #2: 0 EXP이면 보상 없음
+  if (totalExp <= 0) return [];
+
   const col = getCollection();
+  // FIX #1: 리더 UID 미리 저장 (EXP 분배 후 복원용)
+  const leaderUid = col.party[0] || null;
   const partyMembers = col.party
     .map(uid => col.owned.find(p => p.uid === uid))
     .filter(Boolean) as OwnedPokemon[];
 
   if (partyMembers.length === 0) return [];
 
-  const expPerMember = Math.max(1, Math.floor(totalExp / partyMembers.length));
+  const expPerMember = Math.floor(totalExp / partyMembers.length);
+  if (expPerMember <= 0) return [];
   const results: PartyExpResult[] = [];
 
   for (let i = 0; i < partyMembers.length; i++) {
@@ -416,11 +422,11 @@ export function grantExpToParty(totalExp: number, leaderBonusMultiplier: number 
 
     pokemon.level = currentLevel;
 
-    // Check evolution via evolution-table (supports level / stone / intimacy / story)
+    // Check evolution via evolution-table (supports level / stone / condition / story)
     let evolved = false;
     let evolvedTo: number | undefined;
     const evo = canEvolve(pokemon.speciesId, currentLevel, pokemon.friendship);
-    if (evo && evo.type === 'level') {
+    if (evo && (evo.type === 'level')) {
       const oldSpeciesId = pokemon.speciesId;
       pokemon.speciesId = evo.targetId;
       evolved = true;
@@ -434,7 +440,7 @@ export function grantExpToParty(totalExp: number, leaderBonusMultiplier: number 
       if (!col.seen.includes(evo.targetId)) col.seen.push(evo.targetId);
     }
 
-    // Boost friendship slightly on level up
+    // Boost friendship slightly on level up (legacy compat)
     if (currentLevel > levelBefore) {
       pokemon.friendship = Math.min(255, pokemon.friendship + (currentLevel - levelBefore) * 2);
     }
@@ -450,6 +456,15 @@ export function grantExpToParty(totalExp: number, leaderBonusMultiplier: number 
       evolvedTo,
       isLeader,
     });
+  }
+
+  // FIX #1: 리더 순서 보호 — EXP 분배 후 파티 순서 복원
+  if (leaderUid && col.party[0] !== leaderUid) {
+    const idx = col.party.indexOf(leaderUid);
+    if (idx > 0) {
+      col.party.splice(idx, 1);
+      col.party.unshift(leaderUid);
+    }
   }
 
   saveCollection(col);

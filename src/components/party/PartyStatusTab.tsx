@@ -84,20 +84,7 @@ export default function PartyStatusTab({ pokemon }: PartyStatusTabProps) {
         </div>
       </div>
 
-      {/* Friendship */}
-      <div className="glass-card p-3 rounded-xl">
-        <div className="flex items-center justify-between mb-1.5">
-          <div className="flex items-center gap-1.5">
-            <Heart size={13} className="text-primary" />
-            <span className="text-xs font-semibold text-foreground">친밀도</span>
-          </div>
-          <span className="text-xs text-foreground">{friendship.emoji} {friendship.label}</span>
-        </div>
-        <div className="h-2 rounded-full bg-muted overflow-hidden">
-          <motion.div className="h-full rounded-full gradient-primary" initial={false} animate={{ width: `${(pokemon.friendship / 255) * 100}%` }} />
-        </div>
-        <p className="text-[9px] text-muted-foreground mt-1 text-right">{pokemon.friendship}/255</p>
-      </div>
+      {/* v9: 친밀도 바 제거 — 컨디션 단일 통합 */}
 
       {/* Skills */}
       <div className="glass-card p-3 rounded-xl">

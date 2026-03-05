@@ -85,11 +85,11 @@ const EVOLUTION_TABLE: Record<number, EvolutionInfo[]> = {
   30: [{ targetId: 31, type: 'stone', condition: { item: 'moon-stone', level: 16 } }],         // 니드리나 → 니드퀸
   33: [{ targetId: 34, type: 'stone', condition: { item: 'moon-stone', level: 16 } }],         // 니드리노 → 니드킹
 
-  // ─── 친밀도 진화 (교환 대체) ─────────────────────
-  64: [{ targetId: 65, type: 'intimacy', condition: { intimacy: 200, level: 25 } }],   // 윤겔라 → 후딘
-  93: [{ targetId: 94, type: 'intimacy', condition: { intimacy: 200, level: 25 } }],   // 고우스트 → 팬텀
-  67: [{ targetId: 68, type: 'intimacy', condition: { intimacy: 200, level: 28 } }],   // 근육몬 → 괴력몬
-  75: [{ targetId: 76, type: 'intimacy', condition: { intimacy: 200, level: 25 } }],   // 데구리 → 딱구리
+  // ─── 컨디션 진화 (v9: 친밀도 → 컨디션 80+ 유지) ──
+  64: [{ targetId: 65, type: 'condition', condition: { condition: 80, level: 25 } }],   // 윤겔라 → 후딘
+  93: [{ targetId: 94, type: 'condition', condition: { condition: 80, level: 25 } }],   // 고우스트 → 팬텀
+  67: [{ targetId: 68, type: 'condition', condition: { condition: 80, level: 28 } }],   // 근육몬 → 괴력몬
+  75: [{ targetId: 76, type: 'condition', condition: { condition: 80, level: 25 } }],   // 데구리 → 딱구리
 
   // ─── 스토리 진화 ───────────────────────────────
   151: [{ targetId: 150, type: 'story', condition: { item: 'gene-catalyst', storyMission: 'mewtwo-genesis' } }],
@@ -104,7 +104,7 @@ export function getEvolutionsFor(speciesId: number): EvolutionInfo[] {
 export function canEvolve(
   speciesId: number,
   level: number,
-  friendship: number,
+  conditionOrFriendship: number = 50,
   inventoryItems?: Set<string>,
   completedMissions?: Set<string>,
 ): EvolutionInfo | null {
@@ -119,8 +119,9 @@ export function canEvolve(
       case 'stone':
         if (level >= (evo.condition.level || 15) && inventoryItems?.has(evo.condition.item!)) return evo;
         break;
-      case 'intimacy':
-        if (friendship >= (evo.condition.intimacy || 200) && level >= (evo.condition.level || 25)) return evo;
+      case 'condition':
+        // v9: 컨디션 80+ 유지 + 레벨 조건
+        if (conditionOrFriendship >= (evo.condition.condition || 80) && level >= (evo.condition.level || 25)) return evo;
         break;
       case 'story':
         if (inventoryItems?.has(evo.condition.item!) && completedMissions?.has(evo.condition.storyMission!)) return evo;
@@ -142,7 +143,7 @@ export function getLevelEvolution(speciesId: number): { targetId: number; level:
 
 /** Get evolution type label (Korean) */
 export function getEvolutionTypeLabel(type: EvolutionInfo['type']): string {
-  return { level: '레벨 진화', stone: '진화석 진화', intimacy: '친밀도 진화', story: '스토리 진화' }[type];
+  return { level: '레벨 진화', stone: '진화석 진화', condition: '컨디션 진화', story: '스토리 진화' }[type];
 }
 
 /** Get item name (Korean) */

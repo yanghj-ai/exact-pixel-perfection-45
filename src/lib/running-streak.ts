@@ -38,7 +38,10 @@ export interface RunRecord {
   paceMinPerKm: number | null;
   companionSpeciesId: number;
   companionName: string;
-  rewards: { exp: number; coins: number; conditionRecovery: number; friendshipGain: number };
+  rewards: { exp: number; coins: number; conditionRecovery: number; friendshipGain?: number };
+  // v9 FIX #6: GPS 경로 + 조우 기록
+  route?: { lat: number; lng: number; timestamp: number; pace?: number }[];
+  encounters?: { speciesId: number; grade: string; distanceAtEncounter: number }[];
 }
 
 const STREAK_STORAGE = 'routinmon-running-streak';
