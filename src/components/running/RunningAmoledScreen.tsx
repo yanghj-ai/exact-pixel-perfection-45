@@ -211,6 +211,7 @@ export default function RunningAmoledScreen({
             isEncountering={isEncountering}
             dialogue={companionDialogue}
             fallbackName={companionName}
+            amoled
           />
         </div>
         <div className="flex items-center justify-between mb-6">
