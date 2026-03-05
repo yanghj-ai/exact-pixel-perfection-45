@@ -365,6 +365,8 @@ export default function RunningPage() {
           streakDays={s.streak.currentStreak}
           estimatedExp={Math.floor(s.steps / 10)}
           estimatedCoins={Math.floor(s.steps / 200)}
+          companionDialogue={s.milestoneMsg || s.cheerMessage}
+          isEncountering={s.autoCollected.length > 0 && Date.now() - ((s.autoCollected[s.autoCollected.length - 1] as any)?.timestamp ?? 0) < 3000}
         />
       )}
       <div className="mx-auto max-w-md px-5 pt-8">
