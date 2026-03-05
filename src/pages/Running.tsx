@@ -16,6 +16,8 @@ import { useRunningSession } from '@/hooks/useRunningSession';
 import PetSprite from '@/components/PetSprite';
 import BottomNav from '@/components/BottomNav';
 import RunningMap from '@/components/RunningMap';
+import RunningCompanion from '@/components/running/RunningCompanion';
+import { getConditionState } from '@/lib/pokemon-condition';
 import DebugPanel from '@/components/DebugPanel';
 import CatchQuestBanner from '@/components/CatchQuestBanner';
 import SpecialEncounterOverlay from '@/components/SpecialEncounterOverlay';
@@ -398,19 +400,15 @@ export default function RunningPage() {
 
         {/* Companion + Mood during running */}
         {s.runState !== 'idle' && !s.showMap && (
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex flex-col items-center mb-4">
-            {s.leaderSpecies ? (
-              <motion.img src={s.leaderSpecies.spriteUrl} alt={s.leaderSpecies.name} className="w-24 h-24 object-contain" style={{ imageRendering: 'pixelated' }} animate={{ y: [0, -8, 0] }} transition={{ duration: 1.5, repeat: Infinity, ease: 'easeInOut' }} />
-            ) : (
-              <div className="scale-75"><PetSprite stage={s.pet.stage} hp={100} maxHp={100} happiness={5} streak={0} /></div>
-            )}
-            <AnimatePresence mode="wait">
-              <motion.div key={s.milestoneMsg || s.cheerMessage} initial={{ opacity: 0, y: 5 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className={`glass-card px-3 py-1.5 flex items-center gap-1.5 ${s.milestoneMsg ? 'border border-primary/30' : ''}`}>
-                <span>{getCompanionMoodEmoji(s.companionMood)}</span>
-                <p className="text-xs text-foreground">{s.milestoneMsg || s.cheerMessage}</p>
-              </motion.div>
-            </AnimatePresence>
-          </motion.div>
+          <RunningCompanion
+            species={s.leaderSpecies}
+            currentPace={s.currentPace}
+            totalDistance={s.currentDistance}
+            condition={s.condition.condition}
+            isEncountering={s.autoCollected.length > 0 && s.autoCollected[s.autoCollected.length - 1] !== undefined && Date.now() - (s.autoCollected[s.autoCollected.length - 1] as any)?.timestamp < 3000}
+            dialogue={s.milestoneMsg || s.cheerMessage}
+            fallbackName={s.pet.name || '포켓몬'}
+          />
         )}
 
         {/* Stats display */}
