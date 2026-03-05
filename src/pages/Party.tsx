@@ -93,19 +93,20 @@ export default function Party() {
             <span className="text-sm font-bold text-foreground">내 파티</span>
             <span className="text-xs text-muted-foreground">{party.length}/6</span>
           </div>
-          <div className="grid grid-cols-3 gap-2">
+          <div className="grid grid-cols-3 gap-2.5">
             {Array.from({ length: 6 }).map((_, i) => {
               const member = party[i];
               const species = member ? getPokemonById(member.speciesId) : null;
               const friendship = member ? getFriendshipLevel(member.friendship) : null;
+              const hp = member ? getEffectiveHpRatio(member.uid) : 1;
               return (
                 <motion.button
                   key={i}
-                  whileTap={{ scale: 0.95 }}
+                  whileTap={{ scale: 0.93 }}
                   onClick={() => {
                     if (member) openDetail(member);
                   }}
-                  className={`relative glass-card p-3 flex flex-col items-center gap-1 min-h-[120px] justify-center transition-colors ${
+                  className={`relative glass-card p-3 flex flex-col items-center gap-1.5 min-h-[130px] justify-center transition-colors active:bg-muted/50 ${
                     member ? 'hover:border-primary/40' : ''
                   }`}
                 >
@@ -129,6 +130,15 @@ export default function Party() {
                         <span className="text-[9px]">{friendship?.emoji}</span>
                         <span className="text-[9px] text-muted-foreground">Lv.{member.level}</span>
                       </div>
+                      {/* HP mini bar */}
+                      <div className="w-full h-1 rounded-full bg-muted overflow-hidden mt-0.5">
+                        <div
+                          className={`h-full rounded-full transition-all ${
+                            hp >= 0.5 ? 'bg-heal' : hp >= 0.2 ? 'bg-amber-400' : 'bg-destructive'
+                          }`}
+                          style={{ width: `${Math.round(hp * 100)}%` }}
+                        />
+                      </div>
                     </>
                   ) : (
                     <button
@@ -141,7 +151,7 @@ export default function Party() {
                           toast('보관함에 포켓몬이 없습니다');
                         }
                       }}
-                      className="flex flex-col items-center gap-1 text-muted-foreground/40"
+                      className="flex flex-col items-center gap-1 text-muted-foreground/40 p-4"
                     >
                       <span className="text-2xl">+</span>
                       <span className="text-[10px]">추가</span>
