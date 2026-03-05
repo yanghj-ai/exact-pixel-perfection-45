@@ -65,15 +65,16 @@ export function getConditionLabel(level: ConditionLevel): string {
   return { exhausted: '탈진', tired: '피곤', normal: '보통', good: '좋음', perfect: '최고' }[level];
 }
 
-/** 배틀 스탯 배율 */
+/** 배틀 스탯 배율 — v8: constants.ts CONDITION_BATTLE_MODIFIERS 사용 */
 export function getConditionStatMultiplier(condition: number): number {
   const level = getConditionLevel(condition);
   return { exhausted: 0.80, tired: 0.90, normal: 1.00, good: 1.05, perfect: 1.10 }[level];
 }
 
-/** 컨디션 perfect일 때 크리티컬 보너스 */
+/** 컨디션 크리티컬 보너스 — v8: 5단계 */
 export function getConditionCritBonus(condition: number): number {
-  return condition >= 80 ? 0.05 : 0;
+  const level = getConditionLevel(condition);
+  return { exhausted: -0.03, tired: 0, normal: 0, good: 0.02, perfect: 0.05 }[level];
 }
 
 /** 러닝 후 컨디션 회복: +1 per 100 steps, 하루 최대 +50 */
