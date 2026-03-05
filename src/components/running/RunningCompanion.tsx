@@ -1,6 +1,7 @@
 // ═══════════════════════════════════════════════════════════
 // FIX #8: 러닝 동반 포켓몬 연출 컴포넌트
 // 화면 하단 40%, 7가지 애니메이션 상태, 마일스톤 리액션
+// AMOLED 모드 대비 최적화
 // ═══════════════════════════════════════════════════════════
 
 import { motion, AnimatePresence } from 'framer-motion';
@@ -15,6 +16,7 @@ interface RunningCompanionProps {
   isEncountering: boolean;
   dialogue: string | null;
   fallbackName: string;
+  amoled?: boolean;
 }
 
 function getAnimState(
@@ -64,7 +66,9 @@ function getStateEmoji(state: CompanionAnimState): string {
   }[state];
 }
 
-function getBackgroundEffect(state: CompanionAnimState) {
+function getBackgroundEffect(state: CompanionAnimState, amoled: boolean) {
+  const lineClass = amoled ? 'bg-white/20' : 'bg-foreground/10';
+  const lineClassLight = amoled ? 'bg-white/10' : 'bg-foreground/5';
   switch (state) {
     case 'sprint':
       return (
@@ -72,7 +76,7 @@ function getBackgroundEffect(state: CompanionAnimState) {
           {[...Array(4)].map((_, i) => (
             <motion.div
               key={i}
-              className="absolute h-[2px] bg-foreground/10 rounded-full"
+              className={`absolute h-[2px] ${lineClass} rounded-full`}
               style={{ left: `${15 + i * 18}%`, top: `${40 + i * 8}%`, width: `${20 + i * 5}px` }}
               animate={{ x: [-20, -60], opacity: [0.5, 0] }}
               transition={{ duration: 0.4, repeat: Infinity, delay: i * 0.1 }}
@@ -86,7 +90,7 @@ function getBackgroundEffect(state: CompanionAnimState) {
           {[...Array(2)].map((_, i) => (
             <motion.div
               key={i}
-              className="absolute h-[1px] bg-foreground/5 rounded-full"
+              className={`absolute h-[1px] ${lineClassLight} rounded-full`}
               style={{ left: `${20 + i * 25}%`, top: `${50 + i * 10}%`, width: '15px' }}
               animate={{ x: [-10, -40], opacity: [0.3, 0] }}
               transition={{ duration: 0.6, repeat: Infinity, delay: i * 0.2 }}
@@ -132,6 +136,7 @@ export default function RunningCompanion({
   isEncountering,
   dialogue,
   fallbackName,
+  amoled = false,
 }: RunningCompanionProps) {
   const animState = getAnimState(currentPace, totalDistance, condition, isEncountering);
   const spriteAnim = getSpriteAnimation(animState);
@@ -140,11 +145,17 @@ export default function RunningCompanion({
 
   if (!species) return null;
 
+  // AMOLED-aware style tokens
+  const bubbleBg = amoled ? 'bg-white/10 border-white/20' : 'bg-card/80 border-border/50';
+  const bubbleText = amoled ? 'text-white' : 'text-foreground';
+  const stateText = amoled ? 'text-white/40' : 'text-muted-foreground';
+  const spriteFilter = amoled ? 'drop-shadow(0 0 8px rgba(255,255,255,0.3))' : 'none';
+
   return (
     <div className="relative w-full flex flex-col items-center justify-end" style={{ minHeight: '35vh' }}>
       {/* Background effects */}
       <div className="absolute inset-0 pointer-events-none overflow-hidden">
-        {getBackgroundEffect(animState)}
+        {getBackgroundEffect(animState, amoled)}
       </div>
 
       {/* Encounter "!" effect */}
@@ -156,7 +167,7 @@ export default function RunningCompanion({
             exit={{ scale: 0, opacity: 0 }}
             className="absolute top-[10%] z-10"
           >
-            <span className="text-5xl font-black text-primary drop-shadow-lg">❗</span>
+            <span className={`text-5xl font-black drop-shadow-lg ${amoled ? 'text-red-400' : 'text-primary'}`}>❗</span>
           </motion.div>
         )}
       </AnimatePresence>
@@ -186,12 +197,12 @@ export default function RunningCompanion({
         )}
       </AnimatePresence>
 
-      {/* Pokemon sprite — 128x128 */}
+      {/* Pokemon sprite — 128x128, glow on AMOLED */}
       <motion.img
         src={species.spriteUrl}
         alt={species.name}
         className="w-32 h-32 object-contain z-10"
-        style={{ imageRendering: 'pixelated' }}
+        style={{ imageRendering: 'pixelated', filter: spriteFilter }}
         animate={spriteAnim}
       />
 
@@ -203,9 +214,9 @@ export default function RunningCompanion({
             initial={{ opacity: 0, y: 8, scale: 0.9 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: -5 }}
-            className="mt-2 px-4 py-2 rounded-2xl bg-card/80 backdrop-blur border border-border/50 max-w-[250px] z-10"
+            className={`mt-2 px-4 py-2 rounded-2xl backdrop-blur border max-w-[250px] z-10 ${bubbleBg}`}
           >
-            <p className="text-xs text-foreground text-center">
+            <p className={`text-xs text-center ${bubbleText}`}>
               {milestoneReaction?.emoji && <span className="mr-1">{milestoneReaction.emoji}</span>}
               {displayDialogue}
             </p>
@@ -216,7 +227,7 @@ export default function RunningCompanion({
       {/* State indicator */}
       <div className="flex items-center gap-1 mt-1 opacity-50">
         <span className="text-xs">{getStateEmoji(animState)}</span>
-        <span className="text-[10px] text-muted-foreground capitalize">{animState}</span>
+        <span className={`text-[10px] capitalize ${stateText}`}>{animState}</span>
       </div>
     </div>
   );
