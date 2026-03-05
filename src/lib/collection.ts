@@ -3,6 +3,7 @@
 // ═══════════════════════════════════════════════════════════
 
 import { getPokemonById, getPokemonByRarity, type Rarity, type PokemonSpecies } from './pokemon-registry';
+import { canEvolve } from './evolution-table';
 import { getCachedCollection, setCachedCollection, setCachedPet, syncOwnedPokemonToDB, syncEggsToDB, isCloudReady } from './cloud-storage';
 
 // ─── Types ───────────────────────────────────────────────
@@ -415,22 +416,22 @@ export function grantExpToParty(totalExp: number, leaderBonusMultiplier: number 
 
     pokemon.level = currentLevel;
 
-    // Check evolution
+    // Check evolution via evolution-table (supports level / stone / intimacy / story)
     let evolved = false;
     let evolvedTo: number | undefined;
-    if (species.evolveTo.length > 0 && species.evolveLevel && currentLevel >= species.evolveLevel) {
+    const evo = canEvolve(pokemon.speciesId, currentLevel, pokemon.friendship);
+    if (evo && evo.type === 'level') {
       const oldSpeciesId = pokemon.speciesId;
-      const nextSpeciesId = species.evolveTo[0];
-      pokemon.speciesId = nextSpeciesId;
+      pokemon.speciesId = evo.targetId;
       evolved = true;
-      evolvedTo = nextSpeciesId;
+      evolvedTo = evo.targetId;
       // Keep pre-evolution as 'discovered', register new as 'owned'
       if (col.pokedex[oldSpeciesId]?.status === 'owned') {
         col.pokedex[oldSpeciesId] = { ...col.pokedex[oldSpeciesId], status: 'discovered' };
       }
-      registerOwnedInPokedex(col, nextSpeciesId, '진화');
+      registerOwnedInPokedex(col, evo.targetId, '진화');
       if (!col.seen) col.seen = [];
-      if (!col.seen.includes(nextSpeciesId)) col.seen.push(nextSpeciesId);
+      if (!col.seen.includes(evo.targetId)) col.seen.push(evo.targetId);
     }
 
     // Boost friendship slightly on level up
